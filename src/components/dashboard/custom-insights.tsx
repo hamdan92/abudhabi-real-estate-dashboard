@@ -16,9 +16,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  BarChart,
-  Bar,
-  Cell,
 } from "recharts";
 import { Transaction } from "@/types";
 import { formatNumber } from "@/lib/utils";
@@ -29,88 +26,36 @@ import {
   Home,
   MapPin,
   BedDouble,
-  Calendar,
   Calculator,
   DollarSign,
-  Clock,
   Target,
   AlertTriangle,
   CheckCircle,
   Building2,
   Percent,
+  Plus,
+  Trash2,
+  Calendar,
+  Banknote,
+  PiggyBank,
+  ArrowUpRight,
 } from "lucide-react";
 
 interface CustomInsightsProps {
   transactions: Transaction[];
 }
 
-interface PaymentMilestone {
-  installment: number;
-  milestone: string;
+interface CustomMilestone {
+  id: string;
+  name: string;
   percentage: number;
   date: string;
-  amount: number;
 }
 
-// Common payment plan templates for Abu Dhabi off-plan
-const PAYMENT_PLANS = {
-  "50-50": {
-    name: "50/50 Payment Plan",
-    description: "50% during construction, 50% on handover",
-    milestones: [
-      { milestone: "Booking/Reservation", percentage: 5 },
-      { milestone: "SPA Signing", percentage: 5 },
-      { milestone: "Start of Construction", percentage: 10 },
-      { milestone: "25% Construction", percentage: 5 },
-      { milestone: "50% Construction", percentage: 10 },
-      { milestone: "75% Construction", percentage: 10 },
-      { milestone: "90% Construction", percentage: 5 },
-      { milestone: "Upon Handover", percentage: 50 },
-    ],
-  },
-  "60-40": {
-    name: "60/40 Payment Plan",
-    description: "60% during construction, 40% on handover",
-    milestones: [
-      { milestone: "Booking/Reservation", percentage: 10 },
-      { milestone: "SPA Signing", percentage: 10 },
-      { milestone: "Start of Construction", percentage: 10 },
-      { milestone: "30% Construction", percentage: 10 },
-      { milestone: "50% Construction", percentage: 10 },
-      { milestone: "70% Construction", percentage: 10 },
-      { milestone: "Upon Handover", percentage: 40 },
-    ],
-  },
-  "80-20": {
-    name: "80/20 Payment Plan",
-    description: "80% during construction, 20% on handover",
-    milestones: [
-      { milestone: "Booking/Reservation", percentage: 10 },
-      { milestone: "SPA Signing", percentage: 15 },
-      { milestone: "Start of Construction", percentage: 15 },
-      { milestone: "30% Construction", percentage: 10 },
-      { milestone: "50% Construction", percentage: 15 },
-      { milestone: "70% Construction", percentage: 15 },
-      { milestone: "Upon Handover", percentage: 20 },
-    ],
-  },
-  "post-handover": {
-    name: "Post-Handover Plan",
-    description: "Lower upfront, extended payments after handover",
-    milestones: [
-      { milestone: "Booking/Reservation", percentage: 5 },
-      { milestone: "SPA Signing", percentage: 5 },
-      { milestone: "During Construction", percentage: 20 },
-      { milestone: "Upon Handover", percentage: 30 },
-      { milestone: "6 Months Post-Handover", percentage: 10 },
-      { milestone: "12 Months Post-Handover", percentage: 10 },
-      { milestone: "18 Months Post-Handover", percentage: 10 },
-      { milestone: "24 Months Post-Handover", percentage: 10 },
-    ],
-  },
-};
-
 function calculateMortgage(principal: number, annualRate: number, years: number) {
+  if (principal <= 0 || annualRate <= 0 || years <= 0) {
+    return { monthlyPayment: 0, totalPayment: 0, totalInterest: 0 };
+  }
   const monthlyRate = annualRate / 100 / 12;
   const numPayments = years * 12;
   const monthlyPayment =
@@ -121,12 +66,6 @@ function calculateMortgage(principal: number, annualRate: number, years: number)
   return { monthlyPayment, totalPayment, totalInterest };
 }
 
-function addMonths(date: Date, months: number): Date {
-  const result = new Date(date);
-  result.setMonth(result.getMonth() + months);
-  return result;
-}
-
 export function CustomInsights({ transactions }: CustomInsightsProps) {
   // Filter states
   const [selectedRegion, setSelectedRegion] = useState<string>("all");
@@ -134,16 +73,23 @@ export function CustomInsights({ transactions }: CustomInsightsProps) {
   const [selectedBedrooms, setSelectedBedrooms] = useState<string>("all");
   const [selectedSaleType, setSelectedSaleType] = useState<string>("all");
 
-  // Payment calculator states
+  // Off-plan calculator states
   const [propertyPrice, setPropertyPrice] = useState<number>(2000000);
-  const [selectedPaymentPlan, setSelectedPaymentPlan] = useState<string>("50-50");
-  const [constructionStartDate, setConstructionStartDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
-  const [constructionMonths, setConstructionMonths] = useState<number>(36);
+  const [propertyArea, setPropertyArea] = useState<number>(150); // sqm
+  const [handoverDate, setHandoverDate] = useState<string>("2028-12-31");
+  const [milestones, setMilestones] = useState<CustomMilestone[]>([
+    { id: "1", name: "Booking", percentage: 10, date: new Date().toISOString().split("T")[0] },
+    { id: "2", name: "SPA Signing", percentage: 10, date: "" },
+    { id: "3", name: "During Construction", percentage: 30, date: "" },
+    { id: "4", name: "Upon Handover", percentage: 50, date: "" },
+  ]);
 
-  // Mortgage calculator states
-  const [downPayment, setDownPayment] = useState<number>(20);
+  // Service charge & rent states
+  const [serviceChargePerSqm, setServiceChargePerSqm] = useState<number>(15); // AED per sqm per year
+  const [expectedRentPerYear, setExpectedRentPerYear] = useState<number>(100000); // AED
+
+  // Mortgage calculator states (only for handover amount)
+  const [downPaymentPercent, setDownPaymentPercent] = useState<number>(20);
   const [mortgageRate, setMortgageRate] = useState<number>(4.5);
   const [mortgageYears, setMortgageYears] = useState<number>(25);
 
@@ -272,49 +218,76 @@ export function CustomInsights({ transactions }: CustomInsightsProps) {
     };
   }, [filteredTransactions, transactions]);
 
-  // Generate payment schedule
-  const paymentSchedule = useMemo(() => {
-    const plan = PAYMENT_PLANS[selectedPaymentPlan as keyof typeof PAYMENT_PLANS];
-    if (!plan) return [];
+  // Calculate forecasted value at handover
+  const forecastedValue = useMemo(() => {
+    if (!insights || insights.priceByYear.length < 2) return null;
 
-    const startDate = new Date(constructionStartDate);
-    const monthsPerMilestone = Math.floor(constructionMonths / (plan.milestones.length - 1));
+    const handoverYear = new Date(handoverDate).getFullYear();
+    const currentYear = new Date().getFullYear();
+    const yearsToHandover = handoverYear - currentYear;
 
-    return plan.milestones.map((m, idx) => {
-      let date: Date;
-      if (idx === 0) {
-        date = startDate;
-      } else if (m.milestone.includes("Handover") && !m.milestone.includes("Post")) {
-        date = addMonths(startDate, constructionMonths);
-      } else if (m.milestone.includes("Post-Handover")) {
-        const postMonths = parseInt(m.milestone.match(/\d+/)?.[0] || "0");
-        date = addMonths(startDate, constructionMonths + postMonths);
-      } else {
-        date = addMonths(startDate, idx * monthsPerMilestone);
-      }
+    if (yearsToHandover <= 0) return propertyPrice;
 
-      return {
-        installment: idx + 1,
-        milestone: m.milestone,
-        percentage: m.percentage,
-        date: date.toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }),
-        amount: (propertyPrice * m.percentage) / 100,
-      };
-    });
-  }, [selectedPaymentPlan, propertyPrice, constructionStartDate, constructionMonths]);
+    // Use CAGR to forecast
+    const currentPricePerSqm = insights.avgPricePerSqm;
+    const annualGrowthRate = insights.cagr / 100;
+    const forecastedPricePerSqm = currentPricePerSqm * Math.pow(1 + annualGrowthRate, yearsToHandover);
+    
+    return forecastedPricePerSqm * propertyArea;
+  }, [insights, handoverDate, propertyPrice, propertyArea]);
 
-  // Calculate mortgage
+  // Calculate total percentage from milestones
+  const totalPercentage = useMemo(() => {
+    return milestones.reduce((sum, m) => sum + m.percentage, 0);
+  }, [milestones]);
+
+  // Find handover milestone (last one or the one named "Handover")
+  const handoverMilestone = useMemo(() => {
+    const handover = milestones.find(m => m.name.toLowerCase().includes("handover"));
+    return handover || milestones[milestones.length - 1];
+  }, [milestones]);
+
+  const handoverAmount = handoverMilestone ? (propertyPrice * handoverMilestone.percentage) / 100 : 0;
+
+  // Mortgage calculation (only on handover amount)
   const mortgageCalc = useMemo(() => {
-    const loanAmount = propertyPrice * (1 - downPayment / 100);
+    const downPaymentAmount = handoverAmount * (downPaymentPercent / 100);
+    const loanAmount = handoverAmount - downPaymentAmount;
+    const mortgage = calculateMortgage(loanAmount, mortgageRate, mortgageYears);
     return {
+      handoverAmount,
+      downPaymentAmount,
       loanAmount,
-      ...calculateMortgage(loanAmount, mortgageRate, mortgageYears),
+      ...mortgage,
     };
-  }, [propertyPrice, downPayment, mortgageRate, mortgageYears]);
+  }, [handoverAmount, downPaymentPercent, mortgageRate, mortgageYears]);
+
+  // Service charge calculation
+  const annualServiceCharge = serviceChargePerSqm * propertyArea;
+
+  // Net rental yield calculation
+  const grossRentalYield = (expectedRentPerYear / propertyPrice) * 100;
+  const netRentalYield = ((expectedRentPerYear - annualServiceCharge) / propertyPrice) * 100;
+
+  // Add milestone
+  const addMilestone = () => {
+    const newId = Date.now().toString();
+    setMilestones([...milestones, { id: newId, name: "", percentage: 0, date: "" }]);
+  };
+
+  // Remove milestone
+  const removeMilestone = (id: string) => {
+    if (milestones.length > 1) {
+      setMilestones(milestones.filter((m) => m.id !== id));
+    }
+  };
+
+  // Update milestone
+  const updateMilestone = (id: string, field: keyof CustomMilestone, value: string | number) => {
+    setMilestones(
+      milestones.map((m) => (m.id === id ? { ...m, [field]: value } : m))
+    );
+  };
 
   const hasSelection = selectedRegion !== "all" || selectedPropertyType !== "all" || selectedBedrooms !== "all" || selectedSaleType !== "all";
 
@@ -640,7 +613,7 @@ export function CustomInsights({ transactions }: CustomInsightsProps) {
                 </div>
               </div>
 
-              {/* Recommendation */}
+              {/* Key Insights */}
               <div className="mt-4 p-4 bg-slate-800/30 rounded-lg border border-slate-700">
                 <h4 className="text-sm font-medium text-white mb-2 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-400" />
@@ -672,247 +645,320 @@ export function CustomInsights({ transactions }: CustomInsightsProps) {
       )}
 
       {/* Off-Plan Payment Calculator */}
-      {(selectedSaleType === "على المخطط" || selectedSaleType === "all") && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-amber-400" />
-              Off-Plan Payment Schedule Calculator
-            </CardTitle>
-            <CardDescription>
-              Simulate payment schedules for off-plan properties
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Calculator Inputs */}
-              <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calculator className="w-5 h-5 text-amber-400" />
+            Off-Plan Investment Calculator
+          </CardTitle>
+          <CardDescription>
+            Customize your payment schedule and calculate investment returns
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Property Details */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                <Home className="w-4 h-4 text-amber-400" />
+                Property Details
+              </h4>
+              
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">
-                    Property Price (AED)
-                  </label>
+                  <label className="block text-xs text-slate-400 mb-1">Property Price (AED)</label>
                   <input
                     type="number"
                     value={propertyPrice}
                     onChange={(e) => setPropertyPrice(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">
-                    Payment Plan
-                  </label>
-                  <select
-                    value={selectedPaymentPlan}
-                    onChange={(e) => setSelectedPaymentPlan(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200"
+                  <label className="block text-xs text-slate-400 mb-1">Property Area (sqm)</label>
+                  <input
+                    type="number"
+                    value={propertyArea}
+                    onChange={(e) => setPropertyArea(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Expected Handover Date</label>
+                <input
+                  type="date"
+                  value={handoverDate}
+                  onChange={(e) => setHandoverDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+                />
+              </div>
+
+              {/* Custom Payment Schedule */}
+              <div className="pt-4 border-t border-slate-700">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-amber-400" />
+                    Payment Schedule
+                  </h4>
+                  <button
+                    onClick={addMilestone}
+                    className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
                   >
-                    {Object.entries(PAYMENT_PLANS).map(([key, plan]) => (
-                      <option key={key} value={key}>
-                        {plan.name} - {plan.description}
-                      </option>
-                    ))}
-                  </select>
+                    <Plus className="w-3 h-3" />
+                    Add Milestone
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-2">
-                      Construction Start
-                    </label>
-                    <input
-                      type="date"
-                      value={constructionStartDate}
-                      onChange={(e) => setConstructionStartDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                    />
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {milestones.map((milestone, idx) => (
+                    <div
+                      key={milestone.id}
+                      className="grid grid-cols-12 gap-2 items-center p-2 bg-slate-800/50 rounded-lg"
+                    >
+                      <div className="col-span-4">
+                        <input
+                          type="text"
+                          value={milestone.name}
+                          onChange={(e) => updateMilestone(milestone.id, "name", e.target.value)}
+                          placeholder="Milestone name"
+                          className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-white text-xs"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={milestone.percentage}
+                            onChange={(e) => updateMilestone(milestone.id, "percentage", Number(e.target.value))}
+                            min="0"
+                            max="100"
+                            className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-white text-xs pr-6"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs">%</span>
+                        </div>
+                      </div>
+                      <div className="col-span-3">
+                        <input
+                          type="date"
+                          value={milestone.date}
+                          onChange={(e) => updateMilestone(milestone.id, "date", e.target.value)}
+                          className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-white text-xs"
+                        />
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span className="text-xs text-slate-300">
+                          {formatNumber((propertyPrice * milestone.percentage) / 100)}
+                        </span>
+                      </div>
+                      <div className="col-span-1 text-right">
+                        <button
+                          onClick={() => removeMilestone(milestone.id)}
+                          disabled={milestones.length <= 1}
+                          className="text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Total row */}
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
+                  <span className="text-sm font-medium text-slate-300">Total</span>
+                  <div className="flex items-center gap-4">
+                    <span className={`text-sm font-bold ${totalPercentage === 100 ? "text-emerald-400" : "text-rose-400"}`}>
+                      {totalPercentage}%
+                    </span>
+                    <span className="text-sm font-bold text-amber-400">
+                      AED {formatNumber(propertyPrice)}
+                    </span>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-2">
-                      Construction Period (months)
-                    </label>
-                    <input
-                      type="number"
-                      value={constructionMonths}
-                      onChange={(e) => setConstructionMonths(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                    />
-                  </div>
                 </div>
-              </div>
-
-              {/* Payment Schedule Table */}
-              <div>
-                <h4 className="text-sm font-medium text-slate-400 mb-3">
-                  Payment Schedule: {PAYMENT_PLANS[selectedPaymentPlan as keyof typeof PAYMENT_PLANS]?.name}
-                </h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-700">
-                        <th className="text-left py-2 text-slate-400 font-medium">Inst.</th>
-                        <th className="text-left py-2 text-slate-400 font-medium">Milestone</th>
-                        <th className="text-right py-2 text-slate-400 font-medium">%</th>
-                        <th className="text-right py-2 text-slate-400 font-medium">Date</th>
-                        <th className="text-right py-2 text-slate-400 font-medium">Amount (AED)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paymentSchedule.map((p) => (
-                        <tr key={p.installment} className="border-b border-slate-800">
-                          <td className="py-2 text-slate-300">{p.installment}</td>
-                          <td className="py-2 text-slate-300">{p.milestone}</td>
-                          <td className="py-2 text-right text-slate-300">{p.percentage}%</td>
-                          <td className="py-2 text-right text-slate-400">{p.date}</td>
-                          <td className="py-2 text-right text-white font-medium">
-                            {formatNumber(p.amount)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-slate-600">
-                        <td colSpan={2} className="py-2 text-slate-300 font-medium">Total</td>
-                        <td className="py-2 text-right text-slate-300 font-medium">100%</td>
-                        <td></td>
-                        <td className="py-2 text-right text-amber-400 font-bold">
-                          {formatNumber(propertyPrice)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Mortgage Calculator */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Percent className="w-5 h-5 text-emerald-400" />
-            Mortgage Calculator
-          </CardTitle>
-          <CardDescription>
-            Estimate your monthly mortgage payments
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Inputs */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Property Price (AED)
-                </label>
-                <input
-                  type="number"
-                  value={propertyPrice}
-                  onChange={(e) => setPropertyPrice(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Down Payment: {downPayment}%
-                </label>
-                <input
-                  type="range"
-                  min="15"
-                  max="50"
-                  value={downPayment}
-                  onChange={(e) => setDownPayment(Number(e.target.value))}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>15%</span>
-                  <span>AED {formatNumber(propertyPrice * downPayment / 100)}</span>
-                  <span>50%</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Interest Rate: {mortgageRate}%
-                </label>
-                <input
-                  type="range"
-                  min="3"
-                  max="8"
-                  step="0.1"
-                  value={mortgageRate}
-                  onChange={(e) => setMortgageRate(Number(e.target.value))}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>3%</span>
-                  <span>8%</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Loan Term: {mortgageYears} years
-                </label>
-                <input
-                  type="range"
-                  min="5"
-                  max="25"
-                  value={mortgageYears}
-                  onChange={(e) => setMortgageYears(Number(e.target.value))}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>5 years</span>
-                  <span>25 years</span>
-                </div>
+                {totalPercentage !== 100 && (
+                  <p className="text-xs text-rose-400 mt-1">
+                    ⚠️ Total should equal 100% (currently {totalPercentage}%)
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Results */}
+            {/* Calculations & Results */}
             <div className="space-y-4">
-              <div className="p-6 bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 rounded-xl border border-emerald-500/30">
-                <p className="text-sm text-emerald-300 mb-1">Monthly Payment</p>
-                <p className="text-4xl font-bold text-white">
-                  AED {formatNumber(mortgageCalc.monthlyPayment)}
-                </p>
-              </div>
+              {/* Service Charge & Rent */}
+              <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                <Banknote className="w-4 h-4 text-emerald-400" />
+                Running Costs & Income
+              </h4>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-800/50 rounded-lg">
-                  <p className="text-xs text-slate-400">Loan Amount</p>
-                  <p className="text-lg font-semibold text-white">
-                    AED {formatNumber(mortgageCalc.loanAmount)}
-                  </p>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Service Charge (AED/sqm/year)</label>
+                  <input
+                    type="number"
+                    value={serviceChargePerSqm}
+                    onChange={(e) => setServiceChargePerSqm(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+                  />
                 </div>
-                <div className="p-4 bg-slate-800/50 rounded-lg">
-                  <p className="text-xs text-slate-400">Down Payment</p>
-                  <p className="text-lg font-semibold text-white">
-                    AED {formatNumber(propertyPrice * downPayment / 100)}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-800/50 rounded-lg">
-                  <p className="text-xs text-slate-400">Total Interest</p>
-                  <p className="text-lg font-semibold text-rose-400">
-                    AED {formatNumber(mortgageCalc.totalInterest)}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-800/50 rounded-lg">
-                  <p className="text-xs text-slate-400">Total Payment</p>
-                  <p className="text-lg font-semibold text-white">
-                    AED {formatNumber(mortgageCalc.totalPayment)}
-                  </p>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Expected Annual Rent (AED)</label>
+                  <input
+                    type="number"
+                    value={expectedRentPerYear}
+                    onChange={(e) => setExpectedRentPerYear(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+                  />
                 </div>
               </div>
 
-              <div className="text-xs text-slate-500 p-3 bg-slate-800/30 rounded-lg">
-                <p>* UAE mortgage rates typically range from 3.5% to 5.5% for residents</p>
-                <p>* Maximum LTV is usually 80% for residents, 75% for non-residents</p>
-                <p>* Additional costs: 4% DLD fee, 2% broker fee, valuation, insurance</p>
+              {/* Annual Calculations */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-slate-800/50 rounded-lg text-center">
+                  <p className="text-xs text-slate-400">Annual Service Charge</p>
+                  <p className="text-lg font-bold text-white">AED {formatNumber(annualServiceCharge)}</p>
+                </div>
+                <div className="p-3 bg-slate-800/50 rounded-lg text-center">
+                  <p className="text-xs text-slate-400">Gross Rental Yield</p>
+                  <p className="text-lg font-bold text-emerald-400">{grossRentalYield.toFixed(1)}%</p>
+                </div>
+                <div className="p-3 bg-slate-800/50 rounded-lg text-center">
+                  <p className="text-xs text-slate-400">Net Rental Yield</p>
+                  <p className="text-lg font-bold text-emerald-400">{netRentalYield.toFixed(1)}%</p>
+                </div>
+              </div>
+
+              {/* Forecasted Value at Handover */}
+              {forecastedValue && insights && (
+                <div className="p-4 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-lg border border-purple-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ArrowUpRight className="w-4 h-4 text-purple-400" />
+                    <h4 className="text-sm font-semibold text-white">Forecasted Value at Handover</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">AED {formatNumber(forecastedValue)}</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Based on {insights.cagr.toFixed(1)}% CAGR to {new Date(handoverDate).getFullYear()}
+                  </p>
+                  {forecastedValue > propertyPrice && (
+                    <p className="text-sm text-emerald-400 mt-2">
+                      Potential appreciation: +AED {formatNumber(forecastedValue - propertyPrice)} ({((forecastedValue - propertyPrice) / propertyPrice * 100).toFixed(1)}%)
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Mortgage Section */}
+              <div className="pt-4 border-t border-slate-700">
+                <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-3">
+                  <PiggyBank className="w-4 h-4 text-blue-400" />
+                  Mortgage Calculator (Handover Amount Only)
+                </h4>
+                
+                <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg mb-4">
+                  <p className="text-xs text-blue-300">
+                    💡 Off-plan properties cannot be financed until handover. The mortgage below calculates financing for the <strong>handover payment only</strong> (AED {formatNumber(handoverAmount)} = {handoverMilestone?.percentage || 0}%).
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">
+                      Down Payment on Handover Amount: {downPaymentPercent}%
+                    </label>
+                    <input
+                      type="range"
+                      min="15"
+                      max="50"
+                      value={downPaymentPercent}
+                      onChange={(e) => setDownPaymentPercent(Number(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>15%</span>
+                      <span>AED {formatNumber(mortgageCalc.downPaymentAmount)}</span>
+                      <span>50%</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">
+                      Interest Rate: {mortgageRate}%
+                    </label>
+                    <input
+                      type="range"
+                      min="3"
+                      max="8"
+                      step="0.1"
+                      value={mortgageRate}
+                      onChange={(e) => setMortgageRate(Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">
+                      Loan Term: {mortgageYears} years
+                    </label>
+                    <input
+                      type="range"
+                      min="5"
+                      max="25"
+                      value={mortgageYears}
+                      onChange={(e) => setMortgageYears(Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+
+                {/* Mortgage Results */}
+                <div className="mt-4 p-4 bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 rounded-xl border border-emerald-500/30">
+                  <p className="text-xs text-emerald-300 mb-1">Monthly Mortgage Payment</p>
+                  <p className="text-3xl font-bold text-white">
+                    AED {formatNumber(mortgageCalc.monthlyPayment)}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="p-3 bg-slate-800/50 rounded-lg">
+                    <p className="text-xs text-slate-400">Loan Amount</p>
+                    <p className="text-sm font-semibold text-white">
+                      AED {formatNumber(mortgageCalc.loanAmount)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-slate-800/50 rounded-lg">
+                    <p className="text-xs text-slate-400">Total Interest</p>
+                    <p className="text-sm font-semibold text-rose-400">
+                      AED {formatNumber(mortgageCalc.totalInterest)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Total Investment Summary */}
+                <div className="mt-4 p-4 bg-slate-800/30 rounded-lg border border-slate-700">
+                  <h4 className="text-sm font-medium text-white mb-3">Total Investment Summary</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Pre-Handover Payments (Cash Required)</span>
+                      <span className="text-white font-medium">AED {formatNumber(propertyPrice - handoverAmount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Handover Down Payment</span>
+                      <span className="text-white font-medium">AED {formatNumber(mortgageCalc.downPaymentAmount)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-slate-700 pt-2 mt-2">
+                      <span className="text-slate-300 font-medium">Total Cash Required</span>
+                      <span className="text-amber-400 font-bold">
+                        AED {formatNumber(propertyPrice - handoverAmount + mortgageCalc.downPaymentAmount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Financed Amount</span>
+                      <span className="text-white font-medium">AED {formatNumber(mortgageCalc.loanAmount)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -921,4 +967,3 @@ export function CustomInsights({ transactions }: CustomInsightsProps) {
     </div>
   );
 }
-
