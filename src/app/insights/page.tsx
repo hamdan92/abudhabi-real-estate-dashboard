@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { LoadingSpinner } from "@/components/dashboard/loading-skeleton";
@@ -9,6 +9,7 @@ import {
   InvestmentScoreCard,
   MarketTimingCard,
 } from "@/components/dashboard/charts";
+import { CustomInsights } from "@/components/dashboard/custom-insights";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   TrendingUp,
@@ -22,12 +23,14 @@ import {
   AlertTriangle,
   Activity,
   Gauge,
+  Settings2,
 } from "lucide-react";
 import Link from "next/link";
 import { forecastValues, calculateRiskMetrics, RiskMetrics } from "@/lib/forecasting";
 
 export default function InsightsPage() {
   const { data, transactions, isLoading, error, refetch } = useDashboardData();
+  const [activeTab, setActiveTab] = useState<"general" | "custom">("general");
 
   // Calculate forecasts and risk metrics
   const { forecasts, riskMetrics, forecastSummary } = useMemo(() => {
@@ -131,6 +134,40 @@ export default function InsightsPage() {
           </p>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-2 mb-8">
+          <button
+            onClick={() => setActiveTab("general")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+              activeTab === "general"
+                ? "bg-amber-500 text-white"
+                : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            General Market Insights
+          </button>
+          <button
+            onClick={() => setActiveTab("custom")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+              activeTab === "custom"
+                ? "bg-amber-500 text-white"
+                : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+            }`}
+          >
+            <Settings2 className="w-4 h-4" />
+            Custom Criteria Insights
+          </button>
+        </div>
+
+        {/* Custom Insights Tab */}
+        {activeTab === "custom" && (
+          <CustomInsights transactions={transactions} />
+        )}
+
+        {/* General Insights Tab */}
+        {activeTab === "general" && (
+          <>
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card className="p-4 bg-gradient-to-br from-emerald-500/10 to-transparent border-emerald-500/20">
@@ -435,6 +472,8 @@ export default function InsightsPage() {
             investment decisions.
           </p>
         </div>
+          </>
+        )}
 
         {/* Footer */}
         <footer className="text-center py-8 border-t border-slate-800">
