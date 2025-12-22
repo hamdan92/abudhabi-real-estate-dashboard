@@ -79,33 +79,39 @@ export function ResaleAnalysis({ transactions }: ResaleAnalysisProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header with Confidence Indicator */}
+      {/* Header with Identification Method Breakdown */}
       <div className="bg-gradient-to-r from-emerald-900/20 to-cyan-900/20 rounded-xl p-6 border border-emerald-500/20">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <h2 className="text-2xl font-bold text-white mb-2">Resale Analysis</h2>
             <p className="text-gray-400 max-w-2xl">
-              Analysis of units that were sold more than once. Units are identified using a fingerprinting 
-              algorithm based on region, project, property type, configuration, and area.
+              Resales identified using two methods: <span className="text-emerald-400">السوق = ثانوي</span> (Secondary Market - ground truth) 
+              and <span className="text-blue-400">fingerprinting</span> (linking transactions to calculate appreciation).
             </p>
           </div>
-          <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-            <div className="text-sm text-gray-400 mb-2">Identification Confidence</div>
-            <div className="flex gap-4 text-sm">
-              <div className="flex items-center gap-1">
-                <CheckCircle className="w-4 h-4 text-green-400" />
-                <span className="text-white">{confidence.high}</span>
-                <span className="text-gray-500">High</span>
+          <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700 min-w-[280px]">
+            <div className="text-sm text-gray-400 mb-3">How Resales Were Identified</div>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <span className="text-gray-300">From السوق = ثانوي</span>
+                </div>
+                <span className="text-white font-medium">{metrics.resalesFromMarketType.toLocaleString()}</span>
               </div>
-              <div className="flex items-center gap-1">
-                <Info className="w-4 h-4 text-yellow-400" />
-                <span className="text-white">{confidence.medium}</span>
-                <span className="text-gray-500">Medium</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-400" />
+                  <span className="text-gray-300">From Fingerprint Only</span>
+                </div>
+                <span className="text-white font-medium">{metrics.resalesFromFingerprint.toLocaleString()}</span>
               </div>
-              <div className="flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4 text-red-400" />
-                <span className="text-white">{confidence.low}</span>
-                <span className="text-gray-500">Low</span>
+              <div className="flex items-center justify-between border-t border-gray-700 pt-2 mt-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-purple-400" />
+                  <span className="text-gray-300">With Appreciation Data</span>
+                </div>
+                <span className="text-white font-medium">{metrics.resalesWithAppreciation.toLocaleString()}</span>
               </div>
             </div>
           </div>

@@ -130,6 +130,14 @@ function isValidResale(
 
 /**
  * Group transactions by fingerprint and identify resales
+ * 
+ * IMPORTANT: We use TWO methods to identify resales:
+ * 1. marketType = "ثانوي" (Secondary) - The data tells us it's a resale (GROUND TRUTH)
+ * 2. Fingerprinting - Links resale to original purchase (for appreciation calculation)
+ * 
+ * A transaction is marked as resale if:
+ * - marketType = "ثانوي" (definitive), OR
+ * - It's not the first transaction for this fingerprint AND passes validation
  */
 export function identifyResales(transactions: Transaction[]): UnitHistory[] {
   // Filter to residential only for cleaner analysis
@@ -165,7 +173,18 @@ export function identifyResales(transactions: Transaction[]): UnitHistory[] {
     let previousTxn: Transaction | null = null;
     
     sorted.forEach((t, index) => {
-      const isResale = index > 0;
+      // Use marketType as PRIMARY indicator (ground truth from data)
+      // "ثانوي" = Secondary market = Resale
+      const isMarkedAsResale = t.marketType === "ثانوي";
+      
+      // Also check fingerprint sequence (backup method)
+      const isSequentialResale = index > 0;
+      
+      // A transaction is a resale if:
+      // 1. Data says it's secondary market (definitive), OR
+      // 2. It's not the first in fingerprint sequence (inferred)
+      const isResale = isMarkedAsResale || isSequentialResale;
+      
       const unitTxn: UnitTransaction = {
         transactionId: t.id,
         date: t.registrationDate,
@@ -177,16 +196,18 @@ export function identifyResales(transactions: Transaction[]): UnitHistory[] {
         isResale,
       };
       
-      if (isResale && previousTxn) {
+      // Calculate appreciation only if we have a previous transaction to compare
+      if (isSequentialResale && previousTxn) {
         const { days, years } = calculateHoldingPeriod(previousTxn.registrationDate, t.registrationDate);
         const priceChangePercent = previousTxn.totalPrice > 0
           ? ((t.totalPrice - previousTxn.totalPrice) / previousTxn.totalPrice) * 100
           : 0;
         
-        // Validate this is a legitimate resale (not an outlier)
+        // Validate this is a legitimate comparison (not an outlier)
         if (!isValidResale(t.totalPrice, previousTxn.totalPrice, days, priceChangePercent)) {
-          // Skip this transaction but update previousTxn for next iteration
+          // Skip appreciation calc but still mark as resale if marketType says so
           previousTxn = t;
+          processedTransactions.push(unitTxn);
           return;
         }
         
@@ -240,25 +261,38 @@ export function calculateResaleMetrics(unitHistories: UnitHistory[]): ResaleMetr
     .flatMap((u) => u.transactions)
     .filter((t) => t.isResale);
   
-  // Holding periods
+  // Identification method stats
+  const resalesFromMarketType = resaleTransactions.filter(
+    (t) => t.marketType === "ثانوي"
+  ).length;
+  const resalesWithAppreciation = resaleTransactions.filter(
+    (t) => t.priceChangePercent !== undefined
+  ).length;
+  // Resales identified only by fingerprint (not marked as ثانوي)
+  const resalesFromFingerprint = resaleTransactions.filter(
+    (t) => t.marketType !== "ثانوي" && t.priceChangePercent !== undefined
+  ).length;
+  
+  // Holding periods (only for those with linked prev transaction)
   const holdingPeriods = resaleTransactions
     .map((t) => t.holdingPeriodYears || 0)
     .filter((hp) => hp > 0);
   
-  // Appreciations
+  // Appreciations (only for those with linked prev transaction)
   const appreciations = resaleTransactions
-    .map((t) => t.priceChangePercent || 0);
+    .filter((t) => t.priceChangePercent !== undefined)
+    .map((t) => t.priceChangePercent!);
   
   const positiveResales = appreciations.filter((a) => a > 0).length;
   
   // Annualized returns
   const annualizedReturns = resaleTransactions
     .map((t) => t.annualizedReturn || 0)
-    .filter((r) => isFinite(r) && Math.abs(r) < 500); // Filter outliers
+    .filter((r) => isFinite(r) && r !== 0); // Filter zeros and infinites
   
   // Flip analysis (resale within 2 years)
   const flips = resaleTransactions.filter(
-    (t) => (t.holdingPeriodYears || 0) <= 2
+    (t) => (t.holdingPeriodYears || 0) > 0 && (t.holdingPeriodYears || 0) <= 2
   );
   const flipReturns = flips.map((t) => t.priceChangePercent || 0);
   
@@ -276,6 +310,11 @@ export function calculateResaleMetrics(unitHistories: UnitHistory[]): ResaleMetr
       : 0,
     totalResaleTransactions: resaleTransactions.length,
     
+    // Identification method transparency
+    resalesFromMarketType,
+    resalesFromFingerprint,
+    resalesWithAppreciation,
+    
     avgHoldingPeriodYears: average(holdingPeriods),
     medianHoldingPeriodYears: median(holdingPeriods),
     minHoldingPeriodYears: holdingPeriods.length > 0 ? Math.min(...holdingPeriods) : 0,
@@ -283,8 +322,8 @@ export function calculateResaleMetrics(unitHistories: UnitHistory[]): ResaleMetr
     
     avgAppreciation: average(appreciations),
     medianAppreciation: median(appreciations),
-    positiveResaleRate: resaleTransactions.length > 0
-      ? (positiveResales / resaleTransactions.length) * 100
+    positiveResaleRate: appreciations.length > 0
+      ? (positiveResales / appreciations.length) * 100
       : 0,
     
     avgAnnualizedReturn: average(annualizedReturns),

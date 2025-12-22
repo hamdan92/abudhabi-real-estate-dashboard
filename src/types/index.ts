@@ -333,6 +333,11 @@ export interface ResaleMetrics {
   resaleRate: number; // % of units that were resold
   totalResaleTransactions: number;
   
+  // Identification Method Stats (transparency)
+  resalesFromMarketType: number; // Identified via السوق = ثانوي
+  resalesFromFingerprint: number; // Identified via fingerprint sequence
+  resalesWithAppreciation: number; // Have linked prev transaction for appreciation calc
+  
   // Holding Period Stats
   avgHoldingPeriodYears: number;
   medianHoldingPeriodYears: number;
