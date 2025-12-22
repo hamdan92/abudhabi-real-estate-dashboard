@@ -202,7 +202,7 @@ export function RegionChart({
                   borderRadius: "8px",
                 }}
                 labelStyle={{ color: "#f1f5f9" }}
-                formatter={(value: number) => [formatValue(value), getMetricLabel()]}
+                formatter={(value) => [typeof value === 'number' ? formatValue(value) : '-', getMetricLabel()]}
               />
               <Bar dataKey={metric} radius={[0, 4, 4, 0]}>
                 {chartData.map((_, index) => (

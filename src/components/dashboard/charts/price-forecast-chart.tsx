@@ -118,9 +118,9 @@ export function PriceForecastChart({
                   borderRadius: "8px",
                 }}
                 labelStyle={{ color: "#f1f5f9" }}
-                formatter={(value: number | null, name: string) => {
-                  if (value === null) return ["-", name];
-                  return [`AED ${formatNumber(value)}`, name];
+                formatter={(value, name) => {
+                  if (typeof value !== 'number') return ["-", name || ''];
+                  return [`AED ${formatNumber(value)}`, name || ''];
                 }}
               />
               <Legend wrapperStyle={{ color: "#94a3b8" }} />

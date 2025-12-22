@@ -148,9 +148,9 @@ export function MarketSegmentChart({
                       borderRadius: "8px",
                     }}
                     labelStyle={{ color: "#f1f5f9" }}
-                    formatter={(value: number, name: string) => {
-                      const label = SEGMENT_LABELS[name] || name;
-                      return [formatNumber(value), label];
+                    formatter={(value, name) => {
+                      const label = name ? (SEGMENT_LABELS[name] || name) : '';
+                      return [typeof value === 'number' ? formatNumber(value) : '-', label];
                     }}
                   />
                   <Legend 
@@ -187,10 +187,15 @@ export function MarketSegmentChart({
                       borderRadius: "8px",
                     }}
                     labelStyle={{ color: "#f1f5f9" }}
-                    formatter={(value: number, _: string, props: { payload: { percentage: number } }) => [
-                      `${formatNumber(value)} (${props.payload.percentage.toFixed(1)}%)`,
-                      "Transactions",
-                    ]}
+                    formatter={(value, _, props) => {
+                      const pct = (props as { payload?: { percentage?: number } })?.payload?.percentage;
+                      return [
+                        typeof value === 'number' 
+                          ? `${formatNumber(value)} (${typeof pct === 'number' ? pct.toFixed(1) : '0'}%)`
+                          : '-',
+                        "Transactions",
+                      ];
+                    }}
                   />
                   <Bar dataKey="transactions" radius={[4, 4, 0, 0]}>
                     {saleData.map((entry, index) => (
@@ -231,9 +236,9 @@ export function MarketSegmentChart({
                       borderRadius: "8px",
                     }}
                     labelStyle={{ color: "#f1f5f9" }}
-                    formatter={(value: number, name: string) => {
-                      const label = SEGMENT_LABELS[name] || name;
-                      return [formatNumber(value), label];
+                    formatter={(value, name) => {
+                      const label = name ? (SEGMENT_LABELS[name] || name) : '';
+                      return [typeof value === 'number' ? formatNumber(value) : '-', label];
                     }}
                   />
                   <Legend 
@@ -270,10 +275,15 @@ export function MarketSegmentChart({
                       borderRadius: "8px",
                     }}
                     labelStyle={{ color: "#f1f5f9" }}
-                    formatter={(value: number, _: string, props: { payload: { percentage: number } }) => [
-                      `${formatNumber(value)} (${props.payload.percentage.toFixed(1)}%)`,
-                      "Transactions",
-                    ]}
+                    formatter={(value, _, props) => {
+                      const pct = (props as { payload?: { percentage?: number } })?.payload?.percentage;
+                      return [
+                        typeof value === 'number' 
+                          ? `${formatNumber(value)} (${typeof pct === 'number' ? pct.toFixed(1) : '0'}%)`
+                          : '-',
+                        "Transactions",
+                      ];
+                    }}
                   />
                   <Bar dataKey="transactions" radius={[4, 4, 0, 0]}>
                     {marketData.map((entry, index) => (

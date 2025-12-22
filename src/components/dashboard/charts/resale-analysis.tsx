@@ -237,9 +237,11 @@ export function ResaleAnalysis({ transactions }: ResaleAnalysisProps) {
                   />
                   <Tooltip
                     contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151" }}
-                    formatter={(value: number, name: string) => [
-                      `${value.toFixed(1)}${name === "Appreciation" ? "%" : " years"}`,
-                      name,
+                    formatter={(value, name) => [
+                      typeof value === 'number' 
+                        ? `${value.toFixed(1)}${name === "Appreciation" ? "%" : " years"}`
+                        : '-',
+                      name || '',
                     ]}
                   />
                   <Scatter 
@@ -263,8 +265,9 @@ export function ResaleAnalysis({ transactions }: ResaleAnalysisProps) {
                   <YAxis dataKey="range" type="category" stroke="#9ca3af" width={80} />
                   <Tooltip
                     contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151" }}
-                    formatter={(value: number, name: string) => [
-                      name === "count" ? value : `${value.toFixed(1)}%`,
+                    formatter={(value, name) => [
+                      typeof value !== 'number' ? '-' 
+                        : name === "count" ? String(value) : `${value.toFixed(1)}%`,
                       name === "count" ? "Transactions" : "Avg Return",
                     ]}
                   />
@@ -323,7 +326,7 @@ export function ResaleAnalysis({ transactions }: ResaleAnalysisProps) {
                   <YAxis stroke="#9ca3af" />
                   <Tooltip
                     contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151" }}
-                    formatter={(value: number) => [value, "Transactions"]}
+                    formatter={(value) => [value, "Transactions"]}
                   />
                   <Bar dataKey="count" fill="#8b5cf6">
                     {analysis.appreciationDistribution.map((entry, index) => (
@@ -351,7 +354,7 @@ export function ResaleAnalysis({ transactions }: ResaleAnalysisProps) {
                     cx="50%"
                     cy="50%"
                     outerRadius={100}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                     labelLine={false}
                   >
                     {analysis.appreciationDistribution.map((_, index) => (
@@ -360,7 +363,7 @@ export function ResaleAnalysis({ transactions }: ResaleAnalysisProps) {
                   </Pie>
                   <Tooltip
                     contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151" }}
-                    formatter={(value: number) => [value, "Transactions"]}
+                    formatter={(value) => [value, "Transactions"]}
                   />
                 </PieChart>
               </ResponsiveContainer>

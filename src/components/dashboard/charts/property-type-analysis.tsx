@@ -157,8 +157,10 @@ export function PropertyTypeAnalysisChart({ data }: PropertyTypeAnalysisChartPro
                     border: "1px solid #334155",
                     borderRadius: "8px",
                   }}
-                  formatter={(value: number) => [
-                    `AED ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+                  formatter={(value) => [
+                    typeof value === 'number' 
+                      ? `AED ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                      : '-',
                     "",
                   ]}
                   labelStyle={{ color: "#f8fafc" }}
@@ -203,8 +205,8 @@ export function PropertyTypeAnalysisChart({ data }: PropertyTypeAnalysisChartPro
                     border: "1px solid #334155",
                     borderRadius: "8px",
                   }}
-                  formatter={(value: number, name: string) => [
-                    `${value.toFixed(1)}%`,
+                  formatter={(value, name) => [
+                    typeof value === 'number' ? `${value.toFixed(1)}%` : '-',
                     name === "yoyGrowth" ? "YoY Growth" : "3Y CAGR",
                   ]}
                 />

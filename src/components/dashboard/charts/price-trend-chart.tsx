@@ -174,10 +174,13 @@ export function PriceTrendChart({
                     borderRadius: "8px",
                   }}
                   labelStyle={{ color: "#f1f5f9" }}
-                  formatter={(value: number, name: string) => [
-                    `AED ${formatNumber(value)} /sqm`,
-                    name === "All" ? "All Types" : translate(name, "propertyType"),
-                  ]}
+                  formatter={(value, name) => {
+                    const nameStr = String(name || '');
+                    return [
+                      typeof value === 'number' ? `AED ${formatNumber(value)} /sqm` : '-',
+                      nameStr === "All" ? "All Types" : translate(nameStr, "propertyType"),
+                    ];
+                  }}
                 />
                 <Legend
                   wrapperStyle={{ color: "#94a3b8" }}
@@ -232,8 +235,8 @@ export function PriceTrendChart({
                     borderRadius: "8px",
                   }}
                   labelStyle={{ color: "#f1f5f9" }}
-                  formatter={(value: number) => [
-                    `AED ${formatNumber(value)} /sqm`,
+                  formatter={(value) => [
+                    typeof value === 'number' ? `AED ${formatNumber(value)} /sqm` : '-',
                   ]}
                 />
                 <Legend wrapperStyle={{ color: "#94a3b8" }} />

@@ -143,11 +143,12 @@ export function TransactionVolumeChart({
                     borderRadius: "8px",
                   }}
                   labelStyle={{ color: "#f1f5f9" }}
-                  formatter={(value: number, name: string) => {
+                  formatter={(value, name) => {
+                    if (typeof value !== 'number') return ['-', name || ''];
                     if (name === "Transactions") {
-                      return [formatNumber(value), name];
+                      return [formatNumber(value), name || ''];
                     }
-                    return [formatCurrency(value, true), name];
+                    return [formatCurrency(value, true), name || ''];
                   }}
                 />
                 <Legend wrapperStyle={{ color: "#94a3b8" }} />
@@ -199,11 +200,12 @@ export function TransactionVolumeChart({
                     borderRadius: "8px",
                   }}
                   labelStyle={{ color: "#f1f5f9" }}
-                  formatter={(value: number, name: string) => {
+                  formatter={(value, name) => {
+                    if (typeof value !== 'number') return ['-', String(name || '')];
                     if (name === "Total Value (AED)") {
                       return [formatCurrency(value, true), name];
                     }
-                    return [formatNumber(value), translate(name, "propertyType")];
+                    return [formatNumber(value), translate(String(name || ''), "propertyType")];
                   }}
                 />
                 <Legend 

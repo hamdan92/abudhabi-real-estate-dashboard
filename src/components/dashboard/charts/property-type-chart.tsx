@@ -90,9 +90,11 @@ export function PropertyTypeChart({
                   borderRadius: "8px",
                 }}
                 labelStyle={{ color: "#f1f5f9" }}
-                formatter={(value: number, name: string) => [
-                  `${formatNumber(value)} (${((value / total) * 100).toFixed(1)}%)`,
-                  name,
+                formatter={(value, name) => [
+                  typeof value === 'number' 
+                    ? `${formatNumber(value)} (${((value / total) * 100).toFixed(1)}%)`
+                    : '-',
+                  name || '',
                 ]}
               />
               <Legend

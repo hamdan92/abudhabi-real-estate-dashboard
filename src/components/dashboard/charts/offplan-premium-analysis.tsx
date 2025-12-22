@@ -480,9 +480,10 @@ export function OffPlanPremiumAnalysis({ transactions }: OffPlanPremiumAnalysisP
                   />
                   <Tooltip
                     contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
-                    formatter={(value: number, name: string) => {
-                      if (name === "premium") return [`${value?.toFixed(1)}%`, "Off-Plan Premium"];
-                      return [`AED ${value?.toLocaleString()}/sqm`, name];
+                    formatter={(value, name) => {
+                      if (typeof value !== 'number') return ['-', name || ''];
+                      if (name === "premium") return [`${value.toFixed(1)}%`, "Off-Plan Premium"];
+                      return [`AED ${value.toLocaleString()}/sqm`, name || ''];
                     }}
                   />
                   <Legend />
@@ -515,7 +516,7 @@ export function OffPlanPremiumAnalysis({ transactions }: OffPlanPremiumAnalysisP
                   <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
                   <Tooltip
                     contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
-                    formatter={(value: number, name: string) => [`${value?.toFixed(1)}%`, name]}
+                    formatter={(value, name) => [typeof value === 'number' ? `${value.toFixed(1)}%` : '-', name || '']}
                   />
                   <Legend />
                   <Bar dataKey="ready" name="Ready" stackId="a" fill={READY_COLOR} />
@@ -562,9 +563,10 @@ export function OffPlanPremiumAnalysis({ transactions }: OffPlanPremiumAnalysisP
                     />
                     <Tooltip
                       contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
-                      formatter={(value: number, name: string) => {
-                        if (name === "appreciation" || name === "cagr") return [`${value?.toFixed(1)}%`, name === "cagr" ? "CAGR" : "Total Appreciation"];
-                        return [`AED ${value?.toLocaleString()}/sqm`, name];
+                      formatter={(value, name) => {
+                        if (typeof value !== 'number') return ['-', name || ''];
+                        if (name === "appreciation" || name === "cagr") return [`${value.toFixed(1)}%`, name === "cagr" ? "CAGR" : "Total Appreciation"];
+                        return [`AED ${value.toLocaleString()}/sqm`, name || ''];
                       }}
                     />
                     <Legend />

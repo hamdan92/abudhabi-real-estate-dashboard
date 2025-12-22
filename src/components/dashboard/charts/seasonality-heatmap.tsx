@@ -223,8 +223,8 @@ export function SeasonalityHeatmap({
                   {year}
                 </div>
                 {months.map((monthData, idx) => {
-                  const value = 'percentage' in monthData ? monthData.value : monthData.value;
-                  const percentage = 'percentage' in monthData ? monthData.percentage : 0;
+                  const value = 'percentage' in monthData ? (monthData as { value: number; percentage: number }).value : (monthData as { value: number }).value;
+                  const percentage: number = 'percentage' in monthData ? (monthData as { percentage: number }).percentage : 0;
                   const month = monthData.month;
                   
                   return (

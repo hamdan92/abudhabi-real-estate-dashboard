@@ -257,10 +257,12 @@ export function BedroomAnalysisChart({
                       borderRadius: "8px",
                     }}
                     labelStyle={{ color: "#f1f5f9" }}
-                    formatter={(value: number, name: string) => {
-                      if (name === "Transactions") return [formatNumber(value), name];
-                      if (name === "Avg Price/SQM") return [`AED ${formatNumber(value)}`, name];
-                      return [value, name];
+                    formatter={(value, name) => {
+                      const displayName = name || '';
+                      if (typeof value !== 'number') return ['-', displayName];
+                      if (name === "Transactions") return [formatNumber(value), displayName];
+                      if (name === "Avg Price/SQM") return [`AED ${formatNumber(value)}`, displayName];
+                      return [value, displayName];
                     }}
                   />
                   <Legend wrapperStyle={{ color: "#94a3b8" }} />

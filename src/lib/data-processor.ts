@@ -66,21 +66,21 @@ export async function loadExcelData(buffer: ArrayBuffer): Promise<Transaction[]>
   const sheet = workbook.Sheets[sheetName];
   const rawData = XLSX.utils.sheet_to_json(sheet);
 
-  return rawData
-    .map((row: Record<string, unknown>, index: number) => {
+  return (rawData as Record<string, unknown>[])
+    .map((row, index) => {
       const transaction: Partial<Transaction> = { id: index };
 
       for (const [arabicKey, englishKey] of Object.entries(COLUMN_MAP)) {
         const value = row[arabicKey];
         
         if (englishKey === "registrationDate") {
-          transaction[englishKey] = parseExcelDate(value);
+          (transaction as Record<string, unknown>)[englishKey] = parseExcelDate(value);
         } else if (
           ["soldArea", "landArea", "pricePerSqm", "totalPrice", "percentageSold"].includes(englishKey)
         ) {
-          transaction[englishKey as keyof Transaction] = typeof value === "number" ? value : 0;
+          (transaction as Record<string, unknown>)[englishKey] = typeof value === "number" ? value : 0;
         } else {
-          transaction[englishKey as keyof Transaction] = String(value || "");
+          (transaction as Record<string, unknown>)[englishKey] = String(value || "");
         }
       }
 

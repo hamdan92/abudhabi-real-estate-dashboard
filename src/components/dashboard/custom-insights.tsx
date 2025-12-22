@@ -509,7 +509,7 @@ export function CustomInsights({ transactions }: CustomInsightsProps) {
                         border: "1px solid #334155",
                         borderRadius: "8px",
                       }}
-                      formatter={(value: number) => [`AED ${formatNumber(value)}/sqm`, "Avg Price"]}
+                      formatter={(value) => [typeof value === 'number' ? `AED ${formatNumber(value)}/sqm` : '-', "Avg Price"]}
                     />
                     <Line
                       type="monotone"

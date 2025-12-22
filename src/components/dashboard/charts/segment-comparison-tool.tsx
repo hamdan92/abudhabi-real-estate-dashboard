@@ -358,7 +358,8 @@ export function SegmentComparisonTool({ transactions }: SegmentComparisonToolPro
                           border: "1px solid #334155",
                           borderRadius: "8px",
                         }}
-                        formatter={(value: number, name: string) => {
+                        formatter={(value, name) => {
+                          if (typeof value !== 'number') return ['-', name || ''];
                           if (name === "avgPricePerSqm") {
                             return [
                               `AED ${value.toLocaleString(undefined, {
@@ -367,7 +368,7 @@ export function SegmentComparisonTool({ transactions }: SegmentComparisonToolPro
                               "Avg Price/sqm",
                             ];
                           }
-                          return [`${value.toFixed(1)}%`, name];
+                          return [`${value.toFixed(1)}%`, name || ''];
                         }}
                       />
                       <Legend />
@@ -474,7 +475,8 @@ export function SegmentComparisonTool({ transactions }: SegmentComparisonToolPro
                           border: "1px solid #334155",
                           borderRadius: "8px",
                         }}
-                        formatter={(value: number, name: string) => {
+                        formatter={(value, name) => {
+                          if (typeof value !== 'number') return ['-', name || ''];
                           if (name === "Price")
                             return [
                               `AED ${value.toLocaleString(undefined, {

@@ -257,11 +257,12 @@ export function SaleTypeAnalysisChart({
                     border: "1px solid #334155",
                     borderRadius: "8px",
                   }}
-                  formatter={(value: number, name: string) => {
+                  formatter={(value, name) => {
+                    if (typeof value !== 'number') return ['-', name || ''];
                     if (name === "premium") return [`${value.toFixed(1)}%`, "Ready Premium"];
                     return [
                       `AED ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-                      name,
+                      name || '',
                     ];
                   }}
                 />
@@ -319,7 +320,7 @@ export function SaleTypeAnalysisChart({
                     border: "1px solid #334155",
                     borderRadius: "8px",
                   }}
-                  formatter={(value: number) => [`${value.toFixed(1)}%`, ""]}
+                  formatter={(value) => [typeof value === 'number' ? `${value.toFixed(1)}%` : '-', ""]}
                 />
                 <Legend />
                 <Bar dataKey="Ready" stackId="a" fill={READY_COLOR} />
@@ -380,9 +381,11 @@ export function SaleTypeAnalysisChart({
                       border: "1px solid #334155",
                       borderRadius: "8px",
                     }}
-                    formatter={(value: number, name: string) => [
-                      `AED ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-                      name,
+                    formatter={(value, name) => [
+                      typeof value === 'number' 
+                        ? `AED ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        : '-',
+                      name || '',
                     ]}
                   />
                   <Legend />

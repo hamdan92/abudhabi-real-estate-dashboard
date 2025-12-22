@@ -51,12 +51,13 @@ export function WhatIfCalculator({ yearlyData, regionData }: WhatIfCalculatorPro
   }, [regionData, selectedRegion]);
 
   // Calculate forecast growth rate
-  const forecasts = useMemo(() => forecastValues(yearlyData, 5), [yearlyData]);
+  const forecastSummary = useMemo(() => forecastValues(yearlyData, 5), [yearlyData]);
   const avgAnnualGrowth = useMemo(() => {
     const lastPrice = yearlyData[yearlyData.length - 1]?.medianPricePerSqm || 15000;
-    const forecastPrice = forecasts[forecasts.length - 1]?.predictedPrice || lastPrice;
+    const forecastArr = forecastSummary.forecasts || [];
+    const forecastPrice = forecastArr[forecastArr.length - 1]?.predictedPrice || lastPrice;
     return ((forecastPrice / lastPrice) ** (1 / 5) - 1) * 100;
-  }, [yearlyData, forecasts]);
+  }, [yearlyData, forecastSummary]);
 
   // Calculate scenario
   const scenario = useMemo((): ScenarioResult => {

@@ -202,7 +202,7 @@ export function YoYComparisonChart({
                       borderRadius: "8px",
                     }}
                     labelStyle={{ color: "#f1f5f9" }}
-                    formatter={(value: number) => [formatPercentage(value), "YoY Change"]}
+                    formatter={(value) => [typeof value === 'number' ? formatPercentage(value) : '-', "YoY Change"]}
                   />
                   <ReferenceLine y={0} stroke="#64748b" strokeDasharray="3 3" />
                   <Bar dataKey="change" radius={[4, 4, 0, 0]}>
