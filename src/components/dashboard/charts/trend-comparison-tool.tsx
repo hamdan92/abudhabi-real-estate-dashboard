@@ -18,6 +18,7 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
+  ReferenceLine,
 } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Transaction, UnitTransaction } from "@/types";
@@ -589,6 +590,105 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
       };
     });
   }, [holdingPeriodData, segments]);
+
+  // Calculate Vintage Performance Analysis per segment
+  // Shows how off-plan purchases from each year performed
+  const vintagePerformanceData = useMemo(() => {
+    const years = [...new Set(transactions.map((t) => t.year))].sort();
+    const latestYear = Math.max(...years);
+    
+    // For each segment, calculate vintage performance
+    return segments.map((segment) => {
+      // Get segment-filtered transactions
+      let segmentTxns = transactions.filter((t) => t.assetCategory === "سكني" && t.pricePerSqm > 0 && t.pricePerSqm < 100000);
+      
+      if (segment.region !== "all") {
+        segmentTxns = segmentTxns.filter((t) => t.region === segment.region);
+      }
+      if (segment.propertyType !== "all") {
+        segmentTxns = segmentTxns.filter((t) => t.propertyType === segment.propertyType);
+      }
+      if (segment.bedrooms !== "all") {
+        segmentTxns = segmentTxns.filter((t) => {
+          const design = t.propertyDesign || "";
+          if (segment.bedrooms === "Studio") return design.includes("استوديو") || design.includes("ستوديو") || design.toLowerCase().includes("studio");
+          if (segment.bedrooms === "1 BR") return design.includes("غرفة نوم واحدة") || design.includes("1 غرفة") || design.includes("١");
+          if (segment.bedrooms === "2 BR") return design.includes("غرفتين") || design.includes("2 غرف") || design.includes("٢");
+          if (segment.bedrooms === "3 BR") return design.includes("3 غرف") || design.includes("٣");
+          if (segment.bedrooms === "4 BR") return design.includes("4 غرف") || design.includes("٤");
+          if (segment.bedrooms === "5 BR") return design.includes("5 غرف") || design.includes("٥");
+          if (segment.bedrooms === "6+ BR") return design.includes("6 غرف") || design.includes("٦") || design.includes("7") || design.includes("٧");
+          return true;
+        });
+      }
+      
+      // Get current ready price (latest year)
+      const currentReadyTxns = segmentTxns.filter((t) => t.year === latestYear && t.saleType === "جاهزة");
+      const currentReadyPrice = currentReadyTxns.length > 0 
+        ? calcMedian(currentReadyTxns.map((t) => t.pricePerSqm))
+        : 0;
+      
+      // Calculate vintage performance for each purchase year
+      const vintages = years.slice(0, -1).map((purchaseYear) => { // Exclude latest year
+        const offPlanPurchases = segmentTxns.filter(
+          (t) => t.year === purchaseYear && t.saleType === "على المخطط"
+        );
+        
+        if (offPlanPurchases.length === 0) return null;
+        
+        const purchasePrice = calcMedian(offPlanPurchases.map((t) => t.pricePerSqm));
+        const yearsHeld = latestYear - purchaseYear;
+        
+        const appreciation = purchasePrice > 0 && currentReadyPrice > 0
+          ? ((currentReadyPrice - purchasePrice) / purchasePrice) * 100
+          : 0;
+        
+        const cagr = yearsHeld > 0 && purchasePrice > 0 && currentReadyPrice > 0
+          ? (Math.pow(currentReadyPrice / purchasePrice, 1 / yearsHeld) - 1) * 100
+          : 0;
+        
+        return {
+          purchaseYear,
+          purchasePrice,
+          currentPrice: currentReadyPrice,
+          appreciation,
+          cagr,
+          yearsHeld,
+          volume: offPlanPurchases.length,
+        };
+      }).filter((v): v is NonNullable<typeof v> => v !== null && v.yearsHeld > 0);
+      
+      return {
+        id: segment.id,
+        name: segment.name,
+        color: segment.color,
+        vintages,
+        currentReadyPrice,
+      };
+    });
+  }, [transactions, segments]);
+
+  // Prepare vintage chart data (for line chart comparison)
+  const vintageChartData = useMemo(() => {
+    const allYears = [...new Set(
+      vintagePerformanceData.flatMap((s) => s.vintages.map((v) => v.purchaseYear))
+    )].sort();
+    
+    return allYears.map((year) => {
+      const dataPoint: Record<string, number | string | null> = { year };
+      
+      segments.forEach((segment) => {
+        const segmentData = vintagePerformanceData.find((s) => s.id === segment.id);
+        const vintage = segmentData?.vintages.find((v) => v.purchaseYear === year);
+        
+        dataPoint[`${segment.id}_appreciation`] = vintage?.appreciation ?? null;
+        dataPoint[`${segment.id}_cagr`] = vintage?.cagr ?? null;
+        dataPoint[`${segment.id}_purchasePrice`] = vintage?.purchasePrice ?? null;
+      });
+      
+      return dataPoint;
+    });
+  }, [vintagePerformanceData, segments]);
 
   // Generate radar chart data
   const radarData = useMemo(() => {
@@ -1536,6 +1636,229 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Vintage Performance Analysis Section */}
+        <div className="space-y-4 border-t border-slate-700 pt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock className="h-5 w-5 text-amber-400" />
+            <h3 className="text-lg font-semibold text-slate-200">Vintage Performance Analysis</h3>
+            <span className="text-xs text-slate-400">(Off-plan purchases: How did different purchase years perform?)</span>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Vintage Appreciation by Purchase Year */}
+            <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+              <h4 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                Vintage Appreciation
+                <span className="text-xs text-slate-500 font-normal">(Total gain from purchase year to today)</span>
+              </h4>
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={vintageChartData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis 
+                      dataKey="year" 
+                      tick={{ fill: "#94a3b8", fontSize: 11 }} 
+                    />
+                    <YAxis 
+                      tick={{ fill: "#94a3b8", fontSize: 11 }} 
+                      tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      labelFormatter={(label) => `Purchased in ${label}`}
+                      formatter={(value, name) => {
+                        if (typeof value !== 'number' || value === null) return ['-', 'Appreciation'];
+                        const segmentId = String(name).replace('_appreciation', '');
+                        const segment = segments.find((s) => s.id === segmentId);
+                        return [
+                          `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`,
+                          segment?.name || 'Unknown'
+                        ];
+                      }}
+                    />
+                    <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 3" />
+                    {segments.map((segment) => (
+                      <Line
+                        key={segment.id}
+                        type="monotone"
+                        dataKey={`${segment.id}_appreciation`}
+                        name={`${segment.id}_appreciation`}
+                        stroke={segment.color}
+                        strokeWidth={2}
+                        dot={{ fill: segment.color, strokeWidth: 2, r: 4 }}
+                        connectNulls
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Shows total appreciation from off-plan purchase price to current ready market price
+              </p>
+            </div>
+
+            {/* Vintage CAGR by Purchase Year */}
+            <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+              <h4 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                Vintage CAGR
+                <span className="text-xs text-slate-500 font-normal">(Annualized return per purchase year)</span>
+              </h4>
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={vintageChartData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis 
+                      dataKey="year" 
+                      tick={{ fill: "#94a3b8", fontSize: 11 }} 
+                    />
+                    <YAxis 
+                      tick={{ fill: "#94a3b8", fontSize: 11 }} 
+                      tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      labelFormatter={(label) => `Purchased in ${label}`}
+                      formatter={(value, name) => {
+                        if (typeof value !== 'number' || value === null) return ['-', 'CAGR'];
+                        const segmentId = String(name).replace('_cagr', '');
+                        const segment = segments.find((s) => s.id === segmentId);
+                        return [
+                          `${value >= 0 ? '+' : ''}${value.toFixed(1)}%/yr`,
+                          segment?.name || 'Unknown'
+                        ];
+                      }}
+                    />
+                    <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 3" />
+                    {segments.map((segment) => (
+                      <Line
+                        key={segment.id}
+                        type="monotone"
+                        dataKey={`${segment.id}_cagr`}
+                        name={`${segment.id}_cagr`}
+                        stroke={segment.color}
+                        strokeWidth={2}
+                        dot={{ fill: segment.color, strokeWidth: 2, r: 4 }}
+                        connectNulls
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Annualized returns - adjusts for time held (earlier vintages had more time to appreciate)
+              </p>
+            </div>
+
+            {/* Vintage Purchase Price Comparison */}
+            <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+              <h4 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                Off-Plan Purchase Prices by Vintage
+                <span className="text-xs text-slate-500 font-normal">(What each vintage paid)</span>
+              </h4>
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={vintageChartData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis 
+                      dataKey="year" 
+                      tick={{ fill: "#94a3b8", fontSize: 11 }} 
+                    />
+                    <YAxis 
+                      tick={{ fill: "#94a3b8", fontSize: 11 }} 
+                      tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      labelFormatter={(label) => `Purchased in ${label}`}
+                      formatter={(value, name) => {
+                        if (typeof value !== 'number' || value === null) return ['-', 'Price'];
+                        const segmentId = String(name).replace('_purchasePrice', '');
+                        const segment = segments.find((s) => s.id === segmentId);
+                        return [
+                          `AED ${value.toLocaleString()}/sqm`,
+                          segment?.name || 'Unknown'
+                        ];
+                      }}
+                    />
+                    {segments.map((segment, index) => (
+                      <Bar
+                        key={segment.id}
+                        dataKey={`${segment.id}_purchasePrice`}
+                        name={`${segment.id}_purchasePrice`}
+                        fill={segment.color}
+                        radius={[4, 4, 0, 0]}
+                        opacity={0.8}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Shows what off-plan buyers paid in each year - helps understand cost basis anchoring
+              </p>
+            </div>
+
+            {/* Vintage Summary Table */}
+            <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+              <h4 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                Vintage Performance Summary
+              </h4>
+              <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-slate-800">
+                    <tr className="text-slate-400 border-b border-slate-700">
+                      <th className="text-left py-2 px-2">Segment</th>
+                      <th className="text-center py-2 px-2">Best Vintage</th>
+                      <th className="text-right py-2 px-2">Best CAGR</th>
+                      <th className="text-center py-2 px-2">Worst Vintage</th>
+                      <th className="text-right py-2 px-2">Current Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vintagePerformanceData.map((segment) => {
+                      const sortedVintages = [...segment.vintages].sort((a, b) => b.cagr - a.cagr);
+                      const best = sortedVintages[0];
+                      const worst = sortedVintages[sortedVintages.length - 1];
+                      
+                      return (
+                        <tr key={segment.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                          <td className="py-2 px-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: segment.color }} />
+                              <span className="text-slate-300 truncate max-w-[100px]">{segment.name}</span>
+                            </div>
+                          </td>
+                          <td className="text-center py-2 px-2 text-slate-300">
+                            {best ? best.purchaseYear : '-'}
+                          </td>
+                          <td className="text-right py-2 px-2">
+                            {best ? (
+                              <span className={best.cagr >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                {best.cagr >= 0 ? '+' : ''}{best.cagr.toFixed(1)}%/yr
+                              </span>
+                            ) : '-'}
+                          </td>
+                          <td className="text-center py-2 px-2 text-slate-300">
+                            {worst && sortedVintages.length > 1 ? worst.purchaseYear : '-'}
+                          </td>
+                          <td className="text-right py-2 px-2 text-slate-300">
+                            {segment.currentReadyPrice > 0 
+                              ? `AED ${(segment.currentReadyPrice / 1000).toFixed(1)}K` 
+                              : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Compare which purchase years performed best across different segments
+              </p>
             </div>
           </div>
         </div>
