@@ -12,6 +12,7 @@ import {
   SaleTypeAnalysisChart,
   TrendComparisonTool,
   ResaleAnalysis,
+  OffPlanPremiumAnalysis,
 } from "@/components/dashboard/charts";
 import { Card } from "@/components/ui/card";
 import {
@@ -25,10 +26,11 @@ import {
   ArrowRightLeft,
   Layers,
   Repeat,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 
-type TabType = "overview" | "ready-vs-offplan" | "trends" | "resale";
+type TabType = "overview" | "ready-vs-offplan" | "offplan-premium" | "trends" | "resale";
 
 export default function AnalyticsPage() {
   const { data, segmentedData, transactions, isLoading, error, refetch } = useDashboardData();
@@ -69,6 +71,7 @@ export default function AnalyticsPage() {
     { id: "overview" as TabType, label: "Overview", icon: BarChart3 },
     { id: "trends" as TabType, label: "Trend Comparison", icon: TrendingUp },
     { id: "ready-vs-offplan" as TabType, label: "Ready vs Off-Plan", icon: ArrowRightLeft },
+    { id: "offplan-premium" as TabType, label: "Off-Plan Premium", icon: Building2 },
     { id: "resale" as TabType, label: "Resale Analysis", icon: Repeat },
   ];
 
@@ -275,6 +278,12 @@ export default function AnalyticsPage() {
             </p>
 
             <TrendComparisonTool transactions={transactions} />
+          </section>
+        )}
+
+        {activeTab === "offplan-premium" && (
+          <section>
+            <OffPlanPremiumAnalysis transactions={transactions} />
           </section>
         )}
 

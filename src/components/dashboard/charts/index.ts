@@ -17,3 +17,4 @@ export { SaleTypeAnalysisChart } from "./sale-type-analysis";
 export { SegmentComparisonTool } from "./segment-comparison-tool";
 export { TrendComparisonTool } from "./trend-comparison-tool";
 export { ResaleAnalysis } from "./resale-analysis";
+export { OffPlanPremiumAnalysis } from "./offplan-premium-analysis";
