@@ -223,7 +223,7 @@ export function SegmentComparisonTool({ transactions }: SegmentComparisonToolPro
                 <option value="">All Configurations</option>
                 {filterOptions.bedrooms.map((bed) => (
                   <option key={bed} value={bed}>
-                    {BEDROOM_TYPES[bed as keyof typeof BEDROOM_TYPES] || bed}
+                    {translate(bed, "bedroom")}
                   </option>
                 ))}
               </select>
