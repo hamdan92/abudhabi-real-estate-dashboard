@@ -77,7 +77,7 @@ export function PropertyTypeAnalysisChart({ data }: PropertyTypeAnalysisChartPro
   const growthData = data
     .filter((d) => d.totalTransactions > 100)
     .map((d) => ({
-      type: d.typeEn,
+      typeEn: d.typeEn,
       yoyGrowth: d.yoyGrowth,
       cagr: d.cagr,
       volume: d.totalTransactions,
