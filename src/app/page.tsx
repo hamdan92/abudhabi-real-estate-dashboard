@@ -91,7 +91,7 @@ export default function Dashboard() {
 
     // Recalculate all metrics with filtered data
     const residentialFiltered = filtered.filter((t) => t.assetCategory === "سكني");
-    const currentYear = Math.max(...filtered.map((t) => t.year));
+    const currentYear = filtered.reduce((max, t) => Math.max(max, t.year), 0);
     const currentYearTxns = residentialFiltered.filter((t) => t.year === currentYear);
     const previousYearTxns = residentialFiltered.filter((t) => t.year === currentYear - 1);
 

@@ -66,18 +66,8 @@ export function useDashboardData(): UseDashboardDataReturn {
         throw new Error("Failed to parse data");
       }
 
-      // Process in batches to avoid stack overflow
-      const loadedTransactions: Transaction[] = [];
-      const batchSize = 5000;
-      for (let i = 0; i < rawData.length; i += batchSize) {
-        const batch = rawData.slice(i, i + batchSize);
-        const processed = processJsonData(batch);
-        loadedTransactions.push(...processed);
-        // Allow browser to breathe
-        if (i + batchSize < rawData.length) {
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
-      }
+      // Process data - use concat instead of spread to avoid Safari stack overflow
+      const loadedTransactions = processJsonData(rawData);
 
       setTransactions(loadedTransactions);
 

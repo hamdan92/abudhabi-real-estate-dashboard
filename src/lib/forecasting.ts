@@ -574,7 +574,7 @@ export function calculateInvestmentScores(
   const allTransactions = regionData.map((r) => r.transactions);
   const allPrices = regionData.map((r) => r.avgPricePerSqm);
 
-  const maxTransactions = Math.max(...allTransactions);
+  const maxTransactions = allTransactions.reduce((max, v) => Math.max(max, v), 0);
   const avgPrice = allPrices.reduce((a, b) => a + b, 0) / allPrices.length;
   const medianYoyGrowth = [...allYoyGrowths].sort((a, b) => a - b)[Math.floor(allYoyGrowths.length / 2)] || 0;
 

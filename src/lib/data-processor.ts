@@ -524,7 +524,7 @@ export function calculateReadyVsOffPlan(
   transactions: Transaction[]
 ): ReadyVsOffPlanComparison[] {
   const residentialTxns = transactions.filter((t) => t.assetCategory === "سكني");
-  const currentYear = Math.max(...residentialTxns.map((t) => t.year));
+  const currentYear = residentialTxns.reduce((max, t) => Math.max(max, t.year), 0);
   const previousYear = currentYear - 1;
 
   // Get current and previous year transactions
@@ -639,7 +639,7 @@ export function calculateRegionComparison(
   if (filtered.length === 0) return [];
 
   const grouped = groupBy(filtered, "region");
-  const currentYear = Math.max(...filtered.map((t) => t.year));
+  const currentYear = filtered.reduce((max, t) => Math.max(max, t.year), 0);
 
   return Object.entries(grouped)
     .filter(([, txns]) => txns.length >= 10)
@@ -707,7 +707,7 @@ export function processDashboardData(transactions: Transaction[]): DashboardData
   const residentialTxns = transactions.filter((t) => t.assetCategory === "سكني");
 
   // Get current year and previous year data
-  const currentYear = Math.max(...transactions.map((t) => t.year));
+  const currentYear = transactions.reduce((max, t) => Math.max(max, t.year), 0);
   const currentYearTxns = residentialTxns.filter((t) => t.year === currentYear);
   const previousYearTxns = residentialTxns.filter((t) => t.year === currentYear - 1);
 
