@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { formatNumber } from "@/lib/utils";
 import { DashboardData } from "@/types";
+import { translate } from "@/lib/translations";
 import {
   FileDown,
   FileSpreadsheet,
@@ -136,7 +137,7 @@ export function ReportGenerator({ data }: ReportGeneratorProps) {
 
     regionData.slice(0, 15).forEach((region) => {
       rows.push([
-        region.region,
+        region.regionEn || translate(region.region, 'region'),
         region.transactions.toString(),
         region.totalValue.toString(),
         region.avgPricePerSqm.toFixed(2),
@@ -150,7 +151,7 @@ export function ReportGenerator({ data }: ReportGeneratorProps) {
 
     propertyTypeData.forEach((type) => {
       rows.push([
-        type.type,
+        type.typeEn || translate(type.type, 'propertyType'),
         type.count.toString(),
         type.avgPricePerSqm.toFixed(2),
       ]);
@@ -162,7 +163,7 @@ export function ReportGenerator({ data }: ReportGeneratorProps) {
 
     bedroomData.forEach((bed) => {
       rows.push([
-        bed.bedrooms,
+        bed.bedroomsEn || translate(bed.bedrooms, 'bedroom'),
         bed.count.toString(),
         bed.avgPrice.toFixed(2),
         bed.avgArea.toFixed(2),
@@ -219,7 +220,7 @@ export function ReportGenerator({ data }: ReportGeneratorProps) {
 
     regionData.forEach((region) => {
       rows.push([
-        region.region,
+        region.regionEn || translate(region.region, 'region'),
         region.transactions.toString(),
         region.totalValue.toString(),
         region.avgPricePerSqm.toFixed(2),

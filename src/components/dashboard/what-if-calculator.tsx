@@ -140,7 +140,7 @@ export function WhatIfCalculator({ yearlyData, regionData }: WhatIfCalculatorPro
               >
                 {regionData.slice(0, 15).map((region) => (
                   <option key={region.region} value={region.region}>
-                    {region.region} (AED {formatNumber(region.avgPricePerSqm)}/sqm)
+                    {region.regionEn || region.region} (AED {formatNumber(region.avgPricePerSqm)}/sqm)
                   </option>
                 ))}
               </select>

@@ -23,7 +23,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Transaction, UnitTransaction } from "@/types";
 import { formatNumber } from "@/lib/utils";
-import { translate } from "@/lib/translations";
+import { translate, translateProject } from "@/lib/translations";
 import { identifyResales } from "@/lib/resale-analysis";
 import { Plus, X, TrendingUp, Layers, Download, FileSpreadsheet, BarChart3, Activity, Target, Gauge, Repeat, Clock, DollarSign, Percent } from "lucide-react";
 
@@ -798,18 +798,14 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     }
     // Show projects if specified, otherwise show region
     if (seg.projects && seg.projects.length > 0) {
+      // Translate all project names first
+      const translatedProjects = seg.projects.map(p => translateProject(p));
+      
       if (seg.projects.length === 1) {
-        parts.push(seg.projects[0]);
-      } else if (seg.projects.length <= 3) {
-        // Find common prefix for project names (e.g., "Bloom" from "Bloom Gardens", "Bloom Towers")
-        const commonPrefix = findCommonPrefix(seg.projects);
-        if (commonPrefix && commonPrefix.length >= 3) {
-          parts.push(`${commonPrefix}* (${seg.projects.length})`);
-        } else {
-          parts.push(`${seg.projects.length} Projects`);
-        }
+        parts.push(translatedProjects[0]);
       } else {
-        const commonPrefix = findCommonPrefix(seg.projects);
+        // Find common prefix for translated project names
+        const commonPrefix = findCommonPrefix(translatedProjects);
         if (commonPrefix && commonPrefix.length >= 3) {
           parts.push(`${commonPrefix}* (${seg.projects.length})`);
         } else {
@@ -1194,23 +1190,26 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
               {/* Selected Projects */}
               {newSegment.projects && newSegment.projects.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2 p-2 bg-slate-900/50 rounded-lg border border-slate-700">
-                  {newSegment.projects.map((project) => (
-                    <span
-                      key={project}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded"
-                    >
-                      {project.length > 25 ? project.substring(0, 25) + "..." : project}
-                      <button
-                        onClick={() => setNewSegment({
-                          ...newSegment,
-                          projects: newSegment.projects?.filter((p) => p !== project) || []
-                        })}
-                        className="ml-1 text-amber-400 hover:text-amber-200"
+                  {newSegment.projects.map((project) => {
+                    const displayName = translateProject(project);
+                    return (
+                      <span
+                        key={project}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded"
                       >
-                        ×
-                      </button>
-                    </span>
-                  ))}
+                        {displayName.length > 30 ? displayName.substring(0, 30) + "..." : displayName}
+                        <button
+                          onClick={() => setNewSegment({
+                            ...newSegment,
+                            projects: newSegment.projects?.filter((p) => p !== project) || []
+                          })}
+                          className="ml-1 text-amber-400 hover:text-amber-200"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
               )}
               
@@ -1222,6 +1221,7 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
                   ) : (
                     filteredProjects.map((project) => {
                       const isSelected = newSegment.projects?.includes(project.name);
+                      const displayName = translateProject(project.name);
                       return (
                         <button
                           key={project.name}
@@ -1242,7 +1242,7 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
                             isSelected ? 'bg-amber-500/10 text-amber-300' : 'text-slate-300'
                           }`}
                         >
-                          <span className="truncate">{project.name}</span>
+                          <span className="truncate">{displayName}</span>
                           <span className="text-slate-500 ml-2 shrink-0">
                             {isSelected ? '✓' : ''} ({project.count})
                           </span>

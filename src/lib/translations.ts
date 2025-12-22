@@ -207,6 +207,141 @@ export const ASSET_CATEGORIES: Record<string, string> = {
 };
 
 // =============================================================================
+// PROJECT NAME TRANSLATIONS (Developer prefixes and common terms)
+// =============================================================================
+export const PROJECT_PREFIXES: Record<string, string> = {
+  // Major Developers
+  "بلوم ليفينج": "Bloom Living",
+  "بلوم": "Bloom",
+  "الدار": "Aldar",
+  "إعمار": "Emaar",
+  "داماك": "Damac",
+  "منازل": "Manazil",
+  "هيدرا": "Hydra",
+  "ريبورتاج": "Reportage",
+  "إيجل هيلز": "Eagle Hills",
+  "ميراس": "Meraas",
+  "الغرير": "Al Ghurair",
+  "رأس الخيمة": "RAK",
+  "طلعت مصطفى": "Talaat Moustafa",
+  "إمكان": "Imkan",
+  "Q للعقارات": "Q Properties",
+  "أرادَ": "Arada",
+  "الفطيم": "Al Futtaim",
+  "مبادلة": "Mubadala",
+  "الوطنية": "Al Wataniya",
+  
+  // Common Project Terms
+  "أبراج": "Towers",
+  "برج": "Tower",
+  "حدائق": "Gardens",
+  "حديقة": "Garden",
+  "شاطئ": "Beach",
+  "مارينا": "Marina",
+  "ريزيدنس": "Residence",
+  "ريزيدنسز": "Residences",
+  "سنترال": "Central",
+  "بارك": "Park",
+  "سكوير": "Square",
+  "تراس": "Terrace",
+  "بوابة": "Gate",
+  "واحة": "Oasis",
+  "جيت": "Gate",
+  "هيلز": "Hills",
+  "فيو": "View",
+  "فيوز": "Views",
+  "بلازا": "Plaza",
+  "كورت": "Court",
+  "بالاس": "Palace",
+  "ليفينج": "Living",
+  "هاوس": "House",
+  "هومز": "Homes",
+  "إستيت": "Estate",
+  "إستيتس": "Estates",
+  "كريك": "Creek",
+  "آيلاند": "Island",
+  "لاجون": "Lagoon",
+  "بيتش": "Beach",
+  "سي": "Sea",
+  "باي": "Bay",
+  "هاربور": "Harbour",
+  "بورت": "Port",
+  "كورنيش": "Corniche",
+  "سيتي": "City",
+  "تاون": "Town",
+  "فيلج": "Village",
+  "كومبلكس": "Complex",
+  "سنتر": "Center",
+  "مول": "Mall",
+  "جاليريا": "Galleria",
+  "أفنيو": "Avenue",
+  "ستريت": "Street",
+  "رود": "Road",
+  "واي": "Way",
+  "لاين": "Lane",
+  "درايف": "Drive",
+  "بوليفارد": "Boulevard",
+  
+  // Location Descriptors
+  "الغربية": "West",
+  "الشرقية": "East",
+  "الشمالية": "North",
+  "الجنوبية": "South",
+  "السفلى": "Lower",
+  "العليا": "Upper",
+  
+  // Project Types
+  "فيلا": "Villa",
+  "فلل": "Villas",
+  "شقق": "Apartments",
+  "تاون هاوس": "Townhouse",
+  "تاونهاوس": "Townhouse",
+  "دوبلكس": "Duplex",
+  "بنتهاوس": "Penthouse",
+  "ستوديو": "Studio",
+  "لوفت": "Loft",
+  
+  // Spanish Names (Bloom Living projects)
+  "غرناطة": "Granada",
+  "توليدو": "Toledo",
+  "كازارس": "Casares",
+  "كورديا": "Cordoba",
+  "اشبيلية": "Seville",
+  "كارمونا": "Carmona",
+  "أوقيرا": "Osuna",
+  "المريا": "Almeria",
+  "ماربيا": "Marbella",
+  "فالنسيا": "Valencia",
+  
+  // Numbers in Arabic
+  "١": "1",
+  "٢": "2",
+  "٣": "3",
+  "٤": "4",
+  "٥": "5",
+  "٦": "6",
+  "٧": "7",
+  "٨": "8",
+  "٩": "9",
+  "٠": "0",
+  
+  // Common Terms
+  "خصوصي": "Private",
+  "عام": "Public",
+  "جديد": "New",
+  "قديم": "Old",
+  "كبير": "Large",
+  "صغير": "Small",
+  "فاخر": "Luxury",
+  "بريميوم": "Premium",
+  "إكسكلوسيف": "Exclusive",
+  "سيجنتشر": "Signature",
+  "رويال": "Royal",
+  "جراند": "Grand",
+  "ذا": "The",
+};
+
+// =============================================================================
 // COMBINED TRANSLATIONS OBJECT
 // =============================================================================
 export const TRANSLATIONS = {
@@ -218,6 +353,7 @@ export const TRANSLATIONS = {
   saleTypes: SALE_TYPES,
   marketTypes: MARKET_TYPES,
   assetCategories: ASSET_CATEGORIES,
+  projectPrefixes: PROJECT_PREFIXES,
 } as const;
 
 // =============================================================================
@@ -273,6 +409,34 @@ export function translateShort(value: string | undefined | null, type: 'property
     default:
       return value;
   }
+}
+
+/**
+ * Translate project names by replacing Arabic prefixes with English
+ * Handles partial translations (developer name + location)
+ * @param projectName - The Arabic project name
+ * @returns Translated project name (fully or partially)
+ */
+export function translateProject(projectName: string | undefined | null): string {
+  if (!projectName) return '';
+  
+  let result = projectName;
+  
+  // Sort prefixes by length (longest first) to avoid partial matches
+  const sortedPrefixes = Object.entries(PROJECT_PREFIXES)
+    .sort((a, b) => b[0].length - a[0].length);
+  
+  // Replace all matching prefixes
+  for (const [ar, en] of sortedPrefixes) {
+    if (result.includes(ar)) {
+      result = result.replace(new RegExp(ar, 'g'), en);
+    }
+  }
+  
+  // Clean up any double spaces and trim
+  result = result.replace(/\s+/g, ' ').trim();
+  
+  return result;
 }
 
 /**
@@ -357,5 +521,20 @@ export function translateToArabic(value: string, type: TranslationType): string 
     default:
       return value;
   }
+}
+
+/**
+ * Get a short/clean version of project name for display
+ */
+export function getProjectDisplayName(projectName: string | undefined | null): string {
+  if (!projectName) return '';
+  
+  const translated = translateProject(projectName);
+  
+  // Clean up extra spaces and dashes
+  return translated
+    .replace(/\s+/g, ' ')
+    .replace(/\s*-\s*/g, ' - ')
+    .trim();
 }
 

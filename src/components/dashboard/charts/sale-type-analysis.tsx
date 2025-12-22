@@ -426,7 +426,7 @@ export function SaleTypeAnalysisChart({
                     key={`${row.region}-${row.propertyType}`}
                     className="border-b border-slate-800 hover:bg-slate-800/30"
                   >
-                    <td className="py-3 px-2 text-slate-200">{row.region}</td>
+                    <td className="py-3 px-2 text-slate-200">{row.regionEn || row.region}</td>
                     <td className="py-3 px-2 text-slate-300">{row.propertyTypeEn}</td>
                     <td className="text-right py-3 px-2 text-emerald-400">
                       {row.ready

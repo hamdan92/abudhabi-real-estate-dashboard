@@ -233,7 +233,7 @@ export function Filters({
                       key={region}
                       className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded"
                     >
-                      {region}
+                      {translate(region, 'region')}
                       <button
                         onClick={() => toggleRegion(region)}
                         className="hover:text-amber-300"

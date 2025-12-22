@@ -106,7 +106,7 @@ export function RegionBenchmarkChart({
                     : undefined,
                 }}
               >
-                {region.region}
+                {region.regionEn || region.region}
               </button>
             ))}
           </div>
@@ -115,18 +115,21 @@ export function RegionBenchmarkChart({
         {/* Selected Regions Pills */}
         {selectedRegions.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b border-slate-700">
-            {selectedRegions.map((region, index) => (
-              <span
-                key={region}
-                className="inline-flex items-center gap-1 px-2 py-1 text-sm text-white rounded-lg"
-                style={{ backgroundColor: COLORS[index] }}
-              >
-                {region}
-                <button onClick={() => toggleRegion(region)} className="hover:opacity-80">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
+            {selectedRegions.map((region, index) => {
+              const regionData = data.find((d) => d.region === region);
+              return (
+                <span
+                  key={region}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-sm text-white rounded-lg"
+                  style={{ backgroundColor: COLORS[index] }}
+                >
+                  {regionData?.regionEn || region}
+                  <button onClick={() => toggleRegion(region)} className="hover:opacity-80">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              );
+            })}
           </div>
         )}
 
@@ -145,17 +148,20 @@ export function RegionBenchmarkChart({
                   domain={[0, 100]}
                   tick={{ fill: "#94a3b8", fontSize: 10 }}
                 />
-                {selectedRegions.map((region, index) => (
-                  <Radar
-                    key={region}
-                    name={region}
-                    dataKey={region}
-                    stroke={COLORS[index]}
-                    fill={COLORS[index]}
-                    fillOpacity={0.2}
-                    strokeWidth={2}
-                  />
-                ))}
+                {selectedRegions.map((region, index) => {
+                  const regionData = data.find((d) => d.region === region);
+                  return (
+                    <Radar
+                      key={region}
+                      name={regionData?.regionEn || region}
+                      dataKey={region}
+                      stroke={COLORS[index]}
+                      fill={COLORS[index]}
+                      fillOpacity={0.2}
+                      strokeWidth={2}
+                    />
+                  );
+                })}
                 <Legend wrapperStyle={{ color: "#94a3b8" }} />
                 <Tooltip
                   contentStyle={{
@@ -198,7 +204,7 @@ export function RegionBenchmarkChart({
                           className="inline-block w-3 h-3 rounded-full mr-2"
                           style={{ backgroundColor: COLORS[index] }}
                         />
-                        <span className="text-slate-200">{region}</span>
+                        <span className="text-slate-200">{stats.regionEn || region}</span>
                       </td>
                       <td className="py-2 px-2 text-right text-slate-300">
                         {formatNumber(stats.transactions)}

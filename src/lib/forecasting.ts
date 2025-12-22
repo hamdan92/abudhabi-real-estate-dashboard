@@ -458,7 +458,7 @@ export function calculateInvestmentScores(
     }
 
     return {
-      region: region.region,
+      region: region.regionEn || region.region,
       overallScore,
       priceGrowthScore,
       volumeScore,
