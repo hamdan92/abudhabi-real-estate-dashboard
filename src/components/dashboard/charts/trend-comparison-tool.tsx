@@ -46,6 +46,7 @@ interface Segment {
   propertyType: string;
   bedrooms: string;
   saleType: string;
+  projects: string[]; // Array of project names (empty = all projects)
   color: string;
 }
 
@@ -68,7 +69,7 @@ function getUniqueValues(transactions: Transaction[], field: keyof Transaction):
 // Filter transactions based on segment criteria
 function filterTransactionsForSegment(
   transactions: Transaction[],
-  segment: { region: string; propertyType: string; bedrooms: string; saleType: string }
+  segment: { region: string; propertyType: string; bedrooms: string; saleType: string; projects?: string[] }
 ): Transaction[] {
   let filtered = transactions.filter((t) => t.assetCategory === "سكني" && t.pricePerSqm > 0);
   
@@ -80,6 +81,10 @@ function filterTransactionsForSegment(
   }
   if (segment.saleType !== "all") {
     filtered = filtered.filter((t) => t.saleType === segment.saleType);
+  }
+  // Filter by projects if specified
+  if (segment.projects && segment.projects.length > 0) {
+    filtered = filtered.filter((t) => t.project && segment.projects!.includes(t.project));
   }
   if (segment.bedrooms !== "all") {
     filtered = filtered.filter((t) => {
@@ -206,6 +211,7 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
       propertyType: "all",
       bedrooms: "all",
       saleType: "all",
+      projects: [],
       color: LINE_COLORS[0],
     },
   ]);
@@ -216,13 +222,18 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     propertyType: "all",
     bedrooms: "all",
     saleType: "all",
+    projects: [],
   });
+  
+  // State for project search/filter
+  const [projectSearch, setProjectSearch] = useState("");
 
   // Get filter options
   const filterOptions = useMemo(() => {
     // Count by property type to sort by frequency
     const propertyTypeCounts = new Map<string, number>();
     const regionCounts = new Map<string, number>();
+    const projectCounts = new Map<string, number>();
     
     transactions.forEach((t) => {
       if (t.propertyType) {
@@ -230,6 +241,9 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
       }
       if (t.region) {
         regionCounts.set(t.region, (regionCounts.get(t.region) || 0) + 1);
+      }
+      if (t.project) {
+        projectCounts.set(t.project, (projectCounts.get(t.project) || 0) + 1);
       }
     });
 
@@ -244,8 +258,37 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
         .map(([t]) => t),
       bedrooms: ["Studio", "1 BR", "2 BR", "3 BR", "4 BR", "5 BR", "6+ BR"],
       saleTypes: getUniqueValues(transactions, "saleType").slice(0, 5),
+      projects: [...projectCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([p, count]) => ({ name: p, count })),
     };
   }, [transactions]);
+
+  // Filter projects based on selected region and search term
+  const filteredProjects = useMemo(() => {
+    let projects = filterOptions.projects;
+    
+    // Filter by region if one is selected
+    if (newSegment.region && newSegment.region !== "all") {
+      const regionProjects = new Set<string>();
+      transactions.forEach((t) => {
+        if (t.region === newSegment.region && t.project) {
+          regionProjects.add(t.project);
+        }
+      });
+      projects = projects.filter((p) => regionProjects.has(p.name));
+    }
+    
+    // Filter by search term
+    if (projectSearch) {
+      const searchLower = projectSearch.toLowerCase();
+      projects = projects.filter((p) => 
+        p.name.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    return projects.slice(0, 50); // Limit to 50 for performance
+  }, [filterOptions.projects, newSegment.region, projectSearch, transactions]);
 
   // Helper function to filter transactions for a segment and year
   const filterSegmentYear = (segment: Segment, year?: number) => {
@@ -259,6 +302,10 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     }
     if (segment.propertyType !== "all") {
       filtered = filtered.filter((t) => t.propertyType === segment.propertyType);
+    }
+    // Filter by projects if specified
+    if (segment.projects && segment.projects.length > 0) {
+      filtered = filtered.filter((t) => t.project && segment.projects.includes(t.project));
     }
     if (segment.bedrooms !== "all") {
       filtered = filtered.filter((t) => {
@@ -608,6 +655,10 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
       if (segment.propertyType !== "all") {
         segmentTxns = segmentTxns.filter((t) => t.propertyType === segment.propertyType);
       }
+      // Filter by projects if specified
+      if (segment.projects && segment.projects.length > 0) {
+        segmentTxns = segmentTxns.filter((t) => t.project && segment.projects.includes(t.project));
+      }
       if (segment.bedrooms !== "all") {
         segmentTxns = segmentTxns.filter((t) => {
           const design = t.propertyDesign || "";
@@ -745,7 +796,27 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     if (seg.propertyType && seg.propertyType !== "all") {
       parts.push(translate(seg.propertyType, 'propertyType'));
     }
-    if (seg.region && seg.region !== "all") {
+    // Show projects if specified, otherwise show region
+    if (seg.projects && seg.projects.length > 0) {
+      if (seg.projects.length === 1) {
+        parts.push(seg.projects[0]);
+      } else if (seg.projects.length <= 3) {
+        // Find common prefix for project names (e.g., "Bloom" from "Bloom Gardens", "Bloom Towers")
+        const commonPrefix = findCommonPrefix(seg.projects);
+        if (commonPrefix && commonPrefix.length >= 3) {
+          parts.push(`${commonPrefix}* (${seg.projects.length})`);
+        } else {
+          parts.push(`${seg.projects.length} Projects`);
+        }
+      } else {
+        const commonPrefix = findCommonPrefix(seg.projects);
+        if (commonPrefix && commonPrefix.length >= 3) {
+          parts.push(`${commonPrefix}* (${seg.projects.length})`);
+        } else {
+          parts.push(`${seg.projects.length} Projects`);
+        }
+      }
+    } else if (seg.region && seg.region !== "all") {
       parts.push(translate(seg.region, 'region'));
     }
     if (seg.saleType && seg.saleType !== "all") {
@@ -753,6 +824,25 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     }
     
     return parts.length > 0 ? parts.join(" - ") : "All Properties";
+  };
+
+  // Helper to find common prefix in project names
+  const findCommonPrefix = (strings: string[]): string => {
+    if (strings.length === 0) return "";
+    if (strings.length === 1) return strings[0];
+    
+    // Split first string into words
+    const firstWords = strings[0].split(/\s+/);
+    let commonWords: string[] = [];
+    
+    for (const word of firstWords) {
+      if (strings.every(s => s.toLowerCase().includes(word.toLowerCase()))) {
+        commonWords.push(word);
+        break; // Just use first common word
+      }
+    }
+    
+    return commonWords.join(" ");
   };
 
   // Add new segment
@@ -772,6 +862,7 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
         propertyType: newSegment.propertyType || "all",
         bedrooms: newSegment.bedrooms || "all",
         saleType: newSegment.saleType || "all",
+        projects: newSegment.projects || [],
         color,
       },
     ]);
@@ -781,7 +872,9 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
       propertyType: "all",
       bedrooms: "all",
       saleType: "all",
+      projects: [],
     });
+    setProjectSearch("");
     setIsAddingSegment(false);
   };
 
@@ -865,9 +958,9 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
             <div className="flex flex-wrap gap-2 mt-2">
               <button
                 onClick={() => setSegments([
-                  { id: "apt", name: "Apartments", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "villa", name: "Villas", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "townhouse", name: "Townhouses", region: "all", propertyType: "تاونهاوس / ڨيلا شبه منفصلة", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
+                  { id: "apt", name: "Apartments", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[0] },
+                  { id: "villa", name: "Villas", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[1] },
+                  { id: "townhouse", name: "Townhouses", region: "all", propertyType: "تاونهاوس / ڨيلا شبه منفصلة", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[2] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-lg transition-colors"
               >
@@ -875,8 +968,8 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
               </button>
               <button
                 onClick={() => setSegments([
-                  { id: "apt-ready", name: "Apartment - Ready", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "جاهزة", color: LINE_COLORS[0] },
-                  { id: "apt-offplan", name: "Apartment - Off-Plan", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "على المخطط", color: LINE_COLORS[1] },
+                  { id: "apt-ready", name: "Apartment - Ready", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "جاهزة", projects: [], color: LINE_COLORS[0] },
+                  { id: "apt-offplan", name: "Apartment - Off-Plan", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "على المخطط", projects: [], color: LINE_COLORS[1] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-lg transition-colors"
               >
@@ -884,8 +977,8 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
               </button>
               <button
                 onClick={() => setSegments([
-                  { id: "villa-ready", name: "Villa - Ready", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "جاهزة", color: LINE_COLORS[0] },
-                  { id: "villa-offplan", name: "Villa - Off-Plan", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "على المخطط", color: LINE_COLORS[1] },
+                  { id: "villa-ready", name: "Villa - Ready", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "جاهزة", projects: [], color: LINE_COLORS[0] },
+                  { id: "villa-offplan", name: "Villa - Off-Plan", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "على المخطط", projects: [], color: LINE_COLORS[1] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-lg transition-colors"
               >
@@ -900,10 +993,10 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
             <div className="flex flex-wrap gap-2 mt-2">
               <button
                 onClick={() => setSegments([
-                  { id: "overall", name: "Overall Market", region: "all", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "yas", name: "Yas Island", region: "جزيرة ياس", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "saadiyat", name: "Saadiyat", region: "جزيرة السعديات", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
-                  { id: "reem", name: "Reem Island", region: "جزيرة الريم", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[3] },
+                  { id: "overall", name: "Overall Market", region: "all", propertyType: "all", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[0] },
+                  { id: "yas", name: "Yas Island", region: "جزيرة ياس", propertyType: "all", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[1] },
+                  { id: "saadiyat", name: "Saadiyat", region: "جزيرة السعديات", propertyType: "all", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[2] },
+                  { id: "reem", name: "Reem Island", region: "جزيرة الريم", propertyType: "all", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[3] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors"
               >
@@ -911,9 +1004,9 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
               </button>
               <button
                 onClick={() => setSegments([
-                  { id: "yas-villa", name: "Villa - Yas", region: "جزيرة ياس", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "saadiyat-villa", name: "Villa - Saadiyat", region: "جزيرة السعديات", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "reem-villa", name: "Villa - Reem", region: "جزيرة الريم", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
+                  { id: "yas-villa", name: "Villa - Yas", region: "جزيرة ياس", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[0] },
+                  { id: "saadiyat-villa", name: "Villa - Saadiyat", region: "جزيرة السعديات", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[1] },
+                  { id: "reem-villa", name: "Villa - Reem", region: "جزيرة الريم", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[2] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors"
               >
@@ -921,9 +1014,9 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
               </button>
               <button
                 onClick={() => setSegments([
-                  { id: "yas-apt", name: "Apt - Yas", region: "جزيرة ياس", propertyType: "شقة", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "saadiyat-apt", name: "Apt - Saadiyat", region: "جزيرة السعديات", propertyType: "شقة", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "reem-apt", name: "Apt - Reem", region: "جزيرة الريم", propertyType: "شقة", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
+                  { id: "yas-apt", name: "Apt - Yas", region: "جزيرة ياس", propertyType: "شقة", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[0] },
+                  { id: "saadiyat-apt", name: "Apt - Saadiyat", region: "جزيرة السعديات", propertyType: "شقة", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[1] },
+                  { id: "reem-apt", name: "Apt - Reem", region: "جزيرة الريم", propertyType: "شقة", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[2] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors"
               >
@@ -931,10 +1024,10 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
               </button>
               <button
                 onClick={() => setSegments([
-                  { id: "khalifa", name: "Khalifa City", region: "مدينة خليفة", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "shamkha", name: "Al Shamkha", region: "الشامخة", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "reef", name: "Al Reef", region: "الريف", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
-                  { id: "raha", name: "Al Raha", region: "الراحة", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[3] },
+                  { id: "khalifa", name: "Khalifa City", region: "مدينة خليفة", propertyType: "all", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[0] },
+                  { id: "shamkha", name: "Al Shamkha", region: "الشامخة", propertyType: "all", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[1] },
+                  { id: "reef", name: "Al Reef", region: "الريف", propertyType: "all", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[2] },
+                  { id: "raha", name: "Al Raha", region: "الراحة", propertyType: "all", bedrooms: "all", saleType: "all", projects: [], color: LINE_COLORS[3] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors"
               >
@@ -949,10 +1042,10 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
             <div className="flex flex-wrap gap-2 mt-2">
               <button
                 onClick={() => setSegments([
-                  { id: "studio", name: "Studio", region: "all", propertyType: "all", bedrooms: "Studio", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "1br", name: "1 BR", region: "all", propertyType: "all", bedrooms: "1 BR", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "2br", name: "2 BR", region: "all", propertyType: "all", bedrooms: "2 BR", saleType: "all", color: LINE_COLORS[2] },
-                  { id: "3br", name: "3 BR", region: "all", propertyType: "all", bedrooms: "3 BR", saleType: "all", color: LINE_COLORS[3] },
+                  { id: "studio", name: "Studio", region: "all", propertyType: "all", bedrooms: "Studio", saleType: "all", projects: [], color: LINE_COLORS[0] },
+                  { id: "1br", name: "1 BR", region: "all", propertyType: "all", bedrooms: "1 BR", saleType: "all", projects: [], color: LINE_COLORS[1] },
+                  { id: "2br", name: "2 BR", region: "all", propertyType: "all", bedrooms: "2 BR", saleType: "all", projects: [], color: LINE_COLORS[2] },
+                  { id: "3br", name: "3 BR", region: "all", propertyType: "all", bedrooms: "3 BR", saleType: "all", projects: [], color: LINE_COLORS[3] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
               >
@@ -960,9 +1053,9 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
               </button>
               <button
                 onClick={() => setSegments([
-                  { id: "3br", name: "3 BR", region: "all", propertyType: "all", bedrooms: "3 BR", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "4br", name: "4 BR", region: "all", propertyType: "all", bedrooms: "4 BR", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "5br", name: "5 BR", region: "all", propertyType: "all", bedrooms: "5 BR", saleType: "all", color: LINE_COLORS[2] },
+                  { id: "3br", name: "3 BR", region: "all", propertyType: "all", bedrooms: "3 BR", saleType: "all", projects: [], color: LINE_COLORS[0] },
+                  { id: "4br", name: "4 BR", region: "all", propertyType: "all", bedrooms: "4 BR", saleType: "all", projects: [], color: LINE_COLORS[1] },
+                  { id: "5br", name: "5 BR", region: "all", propertyType: "all", bedrooms: "5 BR", saleType: "all", projects: [], color: LINE_COLORS[2] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
               >
@@ -970,8 +1063,8 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
               </button>
               <button
                 onClick={() => setSegments([
-                  { id: "ready", name: "Ready Properties", region: "all", propertyType: "all", bedrooms: "all", saleType: "جاهزة", color: LINE_COLORS[0] },
-                  { id: "offplan", name: "Off-Plan Properties", region: "all", propertyType: "all", bedrooms: "all", saleType: "على المخطط", color: LINE_COLORS[1] },
+                  { id: "ready", name: "Ready Properties", region: "all", propertyType: "all", bedrooms: "all", saleType: "جاهزة", projects: [], color: LINE_COLORS[0] },
+                  { id: "offplan", name: "Off-Plan Properties", region: "all", propertyType: "all", bedrooms: "all", saleType: "على المخطط", projects: [], color: LINE_COLORS[1] },
                 ])}
                 className="px-3 py-1.5 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
               >
@@ -1075,7 +1168,99 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            {/* Project Selection */}
+            <div className="mt-4">
+              <label className="block text-xs text-slate-400 mb-2">
+                Projects (Optional - group multiple projects together)
+              </label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                  placeholder="Search projects... (e.g., Bloom, Gate Tower)"
+                  className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500"
+                />
+                {newSegment.projects && newSegment.projects.length > 0 && (
+                  <button
+                    onClick={() => setNewSegment({ ...newSegment, projects: [] })}
+                    className="px-3 py-2 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 rounded-lg transition-colors"
+                  >
+                    Clear ({newSegment.projects.length})
+                  </button>
+                )}
+              </div>
+              
+              {/* Selected Projects */}
+              {newSegment.projects && newSegment.projects.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2 p-2 bg-slate-900/50 rounded-lg border border-slate-700">
+                  {newSegment.projects.map((project) => (
+                    <span
+                      key={project}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded"
+                    >
+                      {project.length > 25 ? project.substring(0, 25) + "..." : project}
+                      <button
+                        onClick={() => setNewSegment({
+                          ...newSegment,
+                          projects: newSegment.projects?.filter((p) => p !== project) || []
+                        })}
+                        className="ml-1 text-amber-400 hover:text-amber-200"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              
+              {/* Available Projects */}
+              {(projectSearch || (newSegment.region && newSegment.region !== "all")) && (
+                <div className="max-h-40 overflow-y-auto border border-slate-700 rounded-lg bg-slate-900/50">
+                  {filteredProjects.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-slate-500">No projects found</p>
+                  ) : (
+                    filteredProjects.map((project) => {
+                      const isSelected = newSegment.projects?.includes(project.name);
+                      return (
+                        <button
+                          key={project.name}
+                          onClick={() => {
+                            if (isSelected) {
+                              setNewSegment({
+                                ...newSegment,
+                                projects: newSegment.projects?.filter((p) => p !== project.name) || []
+                              });
+                            } else {
+                              setNewSegment({
+                                ...newSegment,
+                                projects: [...(newSegment.projects || []), project.name]
+                              });
+                            }
+                          }}
+                          className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-800 transition-colors flex items-center justify-between ${
+                            isSelected ? 'bg-amber-500/10 text-amber-300' : 'text-slate-300'
+                          }`}
+                        >
+                          <span className="truncate">{project.name}</span>
+                          <span className="text-slate-500 ml-2 shrink-0">
+                            {isSelected ? '✓' : ''} ({project.count})
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+              
+              {!projectSearch && (!newSegment.region || newSegment.region === "all") && (
+                <p className="text-xs text-slate-500 italic">
+                  Select a region or type to search for projects
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between mt-4">
               <p className="text-sm text-slate-400">
                 Preview: <span className="text-amber-400">{generateSegmentName(newSegment)}</span>
               </p>
