@@ -13,6 +13,7 @@ interface KPICardProps {
   format?: "number" | "currency" | "percentage" | "text";
   compact?: boolean;
   className?: string;
+  subtitle?: string;
 }
 
 export function KPICard({
@@ -24,6 +25,7 @@ export function KPICard({
   format = "number",
   compact = true,
   className,
+  subtitle,
 }: KPICardProps) {
   const formattedValue = (() => {
     if (format === "text" || typeof value === "string") return value;
@@ -50,7 +52,12 @@ export function KPICard({
     <Card className={cn("relative overflow-hidden", className)}>
       <div className="p-6">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-slate-400">{title}</p>
+          <div>
+            <p className="text-sm font-medium text-slate-400">{title}</p>
+            {subtitle && (
+              <p className="text-xs text-slate-500">{subtitle}</p>
+            )}
+          </div>
           {Icon && (
             <div className="rounded-lg bg-amber-500/10 p-2">
               <Icon className="h-5 w-5 text-amber-400" />

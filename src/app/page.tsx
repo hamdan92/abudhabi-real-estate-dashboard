@@ -250,21 +250,23 @@ export default function Dashboard() {
 
           {/* Main Content */}
           <div className="flex-1 min-w-0">
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {/* KPI Cards - Residential Only Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
               <KPICard
-                title={`Total Transactions (${yearlyData.length ? yearlyData[yearlyData.length - 1].year : ''})`}
+                title={`Transactions (${yearlyData.length ? yearlyData[yearlyData.length - 1].year : ''})`}
                 value={kpis.totalTransactions}
                 change={kpis.yoyTransactionGrowth}
                 icon={Building2}
                 format="number"
+                subtitle="Residential"
               />
               <KPICard
-                title="Total Value"
+                title="Value"
                 value={kpis.totalValue}
                 icon={DollarSign}
                 format="currency"
                 compact
+                subtitle="Residential"
               />
               <KPICard
                 title="Avg. Price per SQM"
@@ -280,25 +282,41 @@ export default function Dashboard() {
                 icon={MapPin}
                 format="text"
               />
+              <KPICard
+                title="Total Transactions"
+                value={displayData.transactions.length}
+                icon={BarChart3}
+                format="number"
+                subtitle="All Types"
+              />
             </div>
 
-            {/* Summary Stats */}
+            {/* Summary Stats - All Transaction Types */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
               <Card className="p-4">
                 <p className="text-sm text-slate-400 mb-1">
-                  {hasActiveFilters ? "Filtered Transactions" : "All-Time Transactions"}
+                  {hasActiveFilters ? "Filtered (All Types)" : "All Transactions"}
                 </p>
                 <p className="text-2xl font-bold text-white">
                   {formatNumber(displayData.transactions.length)}
                 </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Residential: {formatNumber(displayData.transactions.filter(t => t.assetCategory === "سكني").length)}
+                </p>
               </Card>
               <Card className="p-4">
                 <p className="text-sm text-slate-400 mb-1">
-                  {hasActiveFilters ? "Filtered Value" : "Total Value (All Time)"}
+                  {hasActiveFilters ? "Total Value (All Types)" : "Total Value"}
                 </p>
                 <p className="text-2xl font-bold text-white">
                   {formatCurrency(
                     displayData.transactions.reduce((sum, t) => sum + (t.totalPrice || 0), 0),
+                    true
+                  )}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Residential: {formatCurrency(
+                    displayData.transactions.filter(t => t.assetCategory === "سكني").reduce((sum, t) => sum + (t.totalPrice || 0), 0),
                     true
                   )}
                 </p>
