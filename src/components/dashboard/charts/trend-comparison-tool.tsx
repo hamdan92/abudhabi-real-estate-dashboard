@@ -20,10 +20,11 @@ import {
   Radar,
 } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Transaction } from "@/types";
+import { Transaction, UnitTransaction } from "@/types";
 import { formatNumber } from "@/lib/utils";
 import { translate } from "@/lib/translations";
-import { Plus, X, TrendingUp, Layers, Download, FileSpreadsheet, BarChart3, Activity, Target, Gauge } from "lucide-react";
+import { identifyResales } from "@/lib/resale-analysis";
+import { Plus, X, TrendingUp, Layers, Download, FileSpreadsheet, BarChart3, Activity, Target, Gauge, Repeat, Clock, DollarSign, Percent } from "lucide-react";
 
 // Color palette for comparison lines
 const LINE_COLORS = [
@@ -298,30 +299,84 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     const years = [...new Set(transactions.map((t) => t.year))].sort();
     
     const metrics: Record<string, {
-      yearly: Record<number, { price: number; volume: number; totalValue: number }>;
+      yearly: Record<number, { 
+        price: number; 
+        volume: number; 
+        totalValue: number;
+        // Resale metrics
+        resaleVolume: number;
+        resaleRate: number;
+        resalePrice: number;
+        primaryPrice: number;
+        resalePremium: number;
+      }>;
       yoyGrowth: Record<number, number>;
       volatility: number;
       cagr: number;
       avgVolume: number;
       totalTransactions: number;
+      // Resale aggregates
+      totalResales: number;
+      avgResaleRate: number;
+      avgResalePremium: number;
     }> = {};
     
     segments.forEach((segment) => {
-      const yearly: Record<number, { price: number; volume: number; totalValue: number }> = {};
+      const yearly: Record<number, { 
+        price: number; 
+        volume: number; 
+        totalValue: number;
+        resaleVolume: number;
+        resaleRate: number;
+        resalePrice: number;
+        primaryPrice: number;
+        resalePremium: number;
+      }> = {};
       const prices: number[] = [];
+      let totalResales = 0;
+      const resaleRates: number[] = [];
+      const resalePremiums: number[] = [];
       
       years.forEach((year) => {
         const filtered = filterSegmentYear(segment, year);
         const yearPrices = filtered.map((t) => t.pricePerSqm).filter((p) => p > 0 && p < 100000);
         const medianPrice = calcMedian(yearPrices);
         
+        // Calculate resale metrics for this year
+        // Resale = marketType === "ثانوي"
+        const resales = filtered.filter((t) => t.marketType === "ثانوي");
+        const primaries = filtered.filter((t) => t.marketType === "أولي");
+        
+        const resaleVolume = resales.length;
+        const resaleRate = filtered.length > 0 ? (resaleVolume / filtered.length) * 100 : 0;
+        
+        // Calculate avg prices for resales and primaries
+        const resalePrices = resales.map((t) => t.pricePerSqm).filter((p) => p > 0 && p < 100000);
+        const primaryPrices = primaries.map((t) => t.pricePerSqm).filter((p) => p > 0 && p < 100000);
+        
+        const resalePrice = calcMedian(resalePrices);
+        const primaryPrice = calcMedian(primaryPrices);
+        
+        // Calculate resale premium (positive = resales cost more)
+        const resalePremium = primaryPrice > 0 && resalePrice > 0
+          ? ((resalePrice - primaryPrice) / primaryPrice) * 100
+          : 0;
+        
         yearly[year] = {
           price: medianPrice,
           volume: filtered.length,
           totalValue: filtered.reduce((sum, t) => sum + (t.totalPrice || 0), 0),
+          resaleVolume,
+          resaleRate,
+          resalePrice,
+          primaryPrice,
+          resalePremium,
         };
         
         if (medianPrice > 0) prices.push(medianPrice);
+        totalResales += resaleVolume;
+        if (resaleRate > 0) resaleRates.push(resaleRate);
+        if (resalePremium !== 0 && primaryPrice > 0 && resalePrice > 0) resalePremiums.push(resalePremium);
       });
       
       // Calculate YoY growth
@@ -354,6 +409,14 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
       const volumes = Object.values(yearly).map((y) => y.volume);
       const avgVolume = volumes.reduce((a, b) => a + b, 0) / volumes.length;
       
+      // Calculate resale aggregates
+      const avgResaleRate = resaleRates.length > 0 
+        ? resaleRates.reduce((a, b) => a + b, 0) / resaleRates.length 
+        : 0;
+      const avgResalePremium = resalePremiums.length > 0 
+        ? resalePremiums.reduce((a, b) => a + b, 0) / resalePremiums.length 
+        : 0;
+      
       metrics[segment.id] = {
         yearly,
         yoyGrowth,
@@ -361,6 +424,9 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
         cagr,
         avgVolume,
         totalTransactions: filterSegmentYear(segment).length,
+        totalResales,
+        avgResaleRate,
+        avgResalePremium,
       };
     });
     
@@ -384,6 +450,13 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
         dataPoint[`${segment.id}_yoy`] = m.yoyGrowth[year] ?? null;
         // Volume data (with _vol suffix)
         dataPoint[`${segment.id}_vol`] = m.yearly[year]?.volume || 0;
+        
+        // Resale metrics
+        dataPoint[`${segment.id}_resaleVol`] = m.yearly[year]?.resaleVolume || 0;
+        dataPoint[`${segment.id}_resaleRate`] = m.yearly[year]?.resaleRate || 0;
+        dataPoint[`${segment.id}_resalePremium`] = m.yearly[year]?.resalePremium ?? null;
+        dataPoint[`${segment.id}_resalePrice`] = m.yearly[year]?.resalePrice || 0;
+        dataPoint[`${segment.id}_primaryPrice`] = m.yearly[year]?.primaryPrice || 0;
       });
       
       return dataPoint;
@@ -404,9 +477,118 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
         volatility: m?.volatility || 0,
         avgVolume: m?.avgVolume || 0,
         totalTransactions: m?.totalTransactions || 0,
+        // Resale metrics
+        totalResales: m?.totalResales || 0,
+        avgResaleRate: m?.avgResaleRate || 0,
+        avgResalePremium: m?.avgResalePremium || 0,
       };
     });
   }, [segmentMetrics, segments]);
+
+  // Calculate holding period data using fingerprinting (cached)
+  const holdingPeriodData = useMemo(() => {
+    // Only run fingerprinting on residential transactions
+    const residentialTxns = transactions.filter((t) => t.assetCategory === "سكني");
+    const unitHistories = identifyResales(residentialTxns);
+    
+    // Extract all resale transactions with holding period data and fingerprint info
+    const allResales: (UnitTransaction & { 
+      fingerprint: string;
+      region: string;
+      propertyType: string;
+      propertyDesign: string;
+    })[] = [];
+    unitHistories.forEach((unit) => {
+      unit.transactions.forEach((t) => {
+        if (t.isResale && t.holdingPeriodYears && t.holdingPeriodYears > 0) {
+          allResales.push({ 
+            ...t, 
+            fingerprint: unit.fingerprint.fingerprint,
+            region: unit.fingerprint.region,
+            propertyType: unit.fingerprint.propertyType,
+            propertyDesign: unit.fingerprint.propertyDesign,
+          });
+        }
+      });
+    });
+    
+    return allResales;
+  }, [transactions]);
+
+  // Calculate holding period metrics per segment
+  const holdingPeriodBySegment = useMemo(() => {
+    return segments.map((segment) => {
+      // Filter resales for this segment
+      const segmentResales = holdingPeriodData.filter((resale) => {
+        // Match segment criteria
+        if (segment.region !== "all" && resale.region !== segment.region) return false;
+        if (segment.propertyType !== "all" && resale.propertyType !== segment.propertyType) return false;
+        if (segment.saleType !== "all") {
+          // Note: For resales, we want to match based on original purchase type which is tricky
+          // For now, we'll skip saleType filter for holding period
+        }
+        if (segment.bedrooms !== "all") {
+          const design = resale.propertyDesign || "";
+          if (segment.bedrooms === "Studio" && !design.includes("استوديو") && !design.includes("ستوديو") && !design.toLowerCase().includes("studio")) return false;
+          if (segment.bedrooms === "1 BR" && !design.includes("غرفة نوم واحدة") && !design.includes("1 غرفة") && !design.includes("١")) return false;
+          if (segment.bedrooms === "2 BR" && !design.includes("غرفتين") && !design.includes("2 غرف") && !design.includes("٢")) return false;
+          if (segment.bedrooms === "3 BR" && !design.includes("3 غرف") && !design.includes("٣")) return false;
+          if (segment.bedrooms === "4 BR" && !design.includes("4 غرف") && !design.includes("٤")) return false;
+          if (segment.bedrooms === "5 BR" && !design.includes("5 غرف") && !design.includes("٥")) return false;
+          if (segment.bedrooms === "6+ BR" && !design.includes("6 غرف") && !design.includes("٦") && !design.includes("7") && !design.includes("٧")) return false;
+        }
+        return true;
+      });
+      
+      if (segmentResales.length === 0) {
+        return {
+          id: segment.id,
+          name: segment.name,
+          color: segment.color,
+          avgHoldingPeriod: 0,
+          medianHoldingPeriod: 0,
+          avgAppreciation: 0,
+          avgAnnualizedReturn: 0,
+          resaleCount: 0,
+          positiveResaleRate: 0,
+        };
+      }
+      
+      const holdingPeriods = segmentResales.map((r) => r.holdingPeriodYears || 0);
+      const appreciations = segmentResales
+        .filter((r) => r.priceChangePercent !== undefined)
+        .map((r) => r.priceChangePercent!);
+      const annualizedReturns = segmentResales
+        .map((r) => r.annualizedReturn || 0)
+        .filter((r) => isFinite(r) && r !== 0);
+      const positiveCount = appreciations.filter((a) => a > 0).length;
+      
+      // Calculate median
+      const sortedPeriods = [...holdingPeriods].sort((a, b) => a - b);
+      const mid = Math.floor(sortedPeriods.length / 2);
+      const medianHoldingPeriod = sortedPeriods.length % 2 !== 0 
+        ? sortedPeriods[mid] 
+        : (sortedPeriods[mid - 1] + sortedPeriods[mid]) / 2;
+      
+      return {
+        id: segment.id,
+        name: segment.name,
+        color: segment.color,
+        avgHoldingPeriod: holdingPeriods.reduce((a, b) => a + b, 0) / holdingPeriods.length,
+        medianHoldingPeriod,
+        avgAppreciation: appreciations.length > 0 
+          ? appreciations.reduce((a, b) => a + b, 0) / appreciations.length 
+          : 0,
+        avgAnnualizedReturn: annualizedReturns.length > 0 
+          ? annualizedReturns.reduce((a, b) => a + b, 0) / annualizedReturns.length 
+          : 0,
+        resaleCount: segmentResales.length,
+        positiveResaleRate: appreciations.length > 0 
+          ? (positiveCount / appreciations.length) * 100 
+          : 0,
+      };
+    });
+  }, [holdingPeriodData, segments]);
 
   // Generate radar chart data
   const radarData = useMemo(() => {
@@ -540,6 +722,10 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
         latestYoY,
         totalTransactions: m.totalTransactions,
         avgVolume: m.avgVolume,
+        // Resale stats
+        totalResales: m.totalResales,
+        avgResaleRate: m.avgResaleRate,
+        avgResalePremium: m.avgResalePremium,
       };
     }).filter(Boolean);
   }, [segmentMetrics, segments]);
@@ -1009,6 +1195,351 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
           </div>
         </div>
 
+        {/* Resale Charts Section */}
+        <div className="mt-8 mb-6">
+          <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+            <Repeat className="w-5 h-5 text-cyan-400" />
+            Resale Analysis (Secondary Market)
+            <span className="text-xs font-normal text-slate-500 ml-2">Transactions where السوق = ثانوي</span>
+          </h3>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Resale Volume Trend */}
+            <div className="bg-slate-800/30 rounded-lg p-4 border border-cyan-900/30">
+              <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-cyan-400" />
+                Resale Volume Trend
+                <span className="text-xs text-slate-500 font-normal">(# of resales per year)</span>
+              </h4>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
+                    <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(0)}K` : value} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      labelStyle={{ color: "#f1f5f9" }}
+                      formatter={(value, name) => {
+                        if (typeof value !== 'number') return ['-', name];
+                        const segmentId = String(name).replace('_resaleVol', '');
+                        const segment = segments.find((s) => s.id === segmentId);
+                        return [`${formatNumber(value)} resales`, segment?.name || name];
+                      }}
+                    />
+                    <Legend formatter={(value) => { const segmentId = String(value).replace('_resaleVol', ''); return segments.find((s) => s.id === segmentId)?.name || value; }} wrapperStyle={{ fontSize: 11 }} />
+                    {segments.map((segment) => (
+                      <Line key={segment.id} type="monotone" dataKey={`${segment.id}_resaleVol`} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 3 }} connectNulls />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Resale Rate (Liquidity) Trend */}
+            <div className="bg-slate-800/30 rounded-lg p-4 border border-cyan-900/30">
+              <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <Percent className="w-4 h-4 text-cyan-400" />
+                Resale Rate (Liquidity)
+                <span className="text-xs text-slate-500 font-normal">(% of transactions that are resales)</span>
+              </h4>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
+                    <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${value?.toFixed(0)}%`} domain={[0, 'auto']} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      labelStyle={{ color: "#f1f5f9" }}
+                      formatter={(value, name) => {
+                        if (typeof value !== 'number') return ['-', name];
+                        const segmentId = String(name).replace('_resaleRate', '');
+                        const segment = segments.find((s) => s.id === segmentId);
+                        return [`${value.toFixed(1)}%`, segment?.name || name];
+                      }}
+                    />
+                    <Legend formatter={(value) => { const segmentId = String(value).replace('_resaleRate', ''); return segments.find((s) => s.id === segmentId)?.name || value; }} wrapperStyle={{ fontSize: 11 }} />
+                    {segments.map((segment) => (
+                      <Line key={segment.id} type="monotone" dataKey={`${segment.id}_resaleRate`} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 3 }} connectNulls />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Resale vs Primary Price Comparison */}
+            <div className="bg-slate-800/30 rounded-lg p-4 border border-cyan-900/30">
+              <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-cyan-400" />
+                Resale vs Primary Price/SQM
+                <span className="text-xs text-slate-500 font-normal">(solid = resale, dashed = primary)</span>
+              </h4>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
+                    <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      labelStyle={{ color: "#f1f5f9" }}
+                      formatter={(value, name) => {
+                        if (typeof value !== 'number' || value === 0) return ['-', name];
+                        const nameStr = String(name);
+                        const isResale = nameStr.includes('_resalePrice');
+                        const isPrimary = nameStr.includes('_primaryPrice');
+                        const segmentId = nameStr.replace('_resalePrice', '').replace('_primaryPrice', '');
+                        const segment = segments.find((s) => s.id === segmentId);
+                        const label = isResale ? 'Resale' : isPrimary ? 'Primary' : '';
+                        return [`AED ${formatNumber(value)}/sqm`, `${segment?.name || name} (${label})`];
+                      }}
+                    />
+                    <Legend 
+                      formatter={(value) => { 
+                        const nameStr = String(value);
+                        const isResale = nameStr.includes('_resalePrice');
+                        const segmentId = nameStr.replace('_resalePrice', '').replace('_primaryPrice', '');
+                        const segment = segments.find((s) => s.id === segmentId);
+                        return `${segment?.name || value} ${isResale ? '(Resale)' : '(Primary)'}`; 
+                      }} 
+                      wrapperStyle={{ fontSize: 10 }} 
+                    />
+                    {segments.map((segment) => (
+                      <Line 
+                        key={`${segment.id}_resale`} 
+                        type="monotone" 
+                        dataKey={`${segment.id}_resalePrice`} 
+                        stroke={segment.color} 
+                        strokeWidth={2} 
+                        dot={{ fill: segment.color, r: 3 }} 
+                        connectNulls 
+                      />
+                    ))}
+                    {segments.map((segment) => (
+                      <Line 
+                        key={`${segment.id}_primary`} 
+                        type="monotone" 
+                        dataKey={`${segment.id}_primaryPrice`} 
+                        stroke={segment.color} 
+                        strokeWidth={2} 
+                        strokeDasharray="5 5"
+                        dot={{ fill: segment.color, r: 2 }} 
+                        connectNulls 
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Resale Premium/Discount */}
+            <div className="bg-slate-800/30 rounded-lg p-4 border border-cyan-900/30">
+              <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-cyan-400" />
+                Resale Premium/Discount
+                <span className="text-xs text-slate-500 font-normal">(+ve = resale trades higher)</span>
+              </h4>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
+                    <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${value?.toFixed(0)}%`} domain={['auto', 'auto']} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      labelStyle={{ color: "#f1f5f9" }}
+                      formatter={(value, name) => {
+                        if (value === null || value === undefined || typeof value !== 'number') return ['-', name];
+                        const segmentId = String(name).replace('_resalePremium', '');
+                        const segment = segments.find((s) => s.id === segmentId);
+                        const label = value >= 0 ? 'Premium' : 'Discount';
+                        return [`${value >= 0 ? '+' : ''}${value.toFixed(1)}% ${label}`, segment?.name || name];
+                      }}
+                    />
+                    <Legend formatter={(value) => { const segmentId = String(value).replace('_resalePremium', ''); return segments.find((s) => s.id === segmentId)?.name || value; }} wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey={() => 0} stroke="#475569" strokeDasharray="5 5" dot={false} legendType="none" />
+                    {segments.map((segment) => (
+                      <Line key={segment.id} type="monotone" dataKey={`${segment.id}_resalePremium`} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 3 }} connectNulls />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Resale Summary Bar Chart */}
+            <div className="bg-slate-800/30 rounded-lg p-4 border border-cyan-900/30">
+              <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <Target className="w-4 h-4 text-cyan-400" />
+                Avg Resale Rate by Segment
+                <span className="text-xs text-slate-500 font-normal">(higher = more liquid)</span>
+              </h4>
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={comparisonBarData} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v.toFixed(0)}%`} domain={[0, 'auto']} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} width={75} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      formatter={(value) => {
+                        if (typeof value !== 'number') return ['-', 'Resale Rate'];
+                        return [`${value.toFixed(1)}%`, "Avg Resale Rate"];
+                      }}
+                    />
+                    <Bar dataKey="avgResaleRate" name="Avg Resale Rate" radius={[0, 4, 4, 0]}>
+                      {comparisonBarData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Avg Resale Premium Bar Chart */}
+            <div className="bg-slate-800/30 rounded-lg p-4 border border-cyan-900/30">
+              <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-cyan-400" />
+                Avg Resale Premium by Segment
+                <span className="text-xs text-slate-500 font-normal">(+ve = secondary costs more)</span>
+              </h4>
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={comparisonBarData} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} width={75} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      formatter={(value) => {
+                        if (typeof value !== 'number') return ['-', 'Premium'];
+                        const label = value >= 0 ? 'Premium' : 'Discount';
+                        return [`${value >= 0 ? '+' : ''}${value.toFixed(1)}%`, `Avg Resale ${label}`];
+                      }}
+                    />
+                    <Bar dataKey="avgResalePremium" name="Avg Resale Premium" radius={[0, 4, 4, 0]}>
+                      {comparisonBarData.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.avgResalePremium >= 0 ? "#22c55e" : "#ef4444"} 
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Holding Period Bar Chart */}
+            <div className="bg-slate-800/30 rounded-lg p-4 border border-cyan-900/30">
+              <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-cyan-400" />
+                Avg Holding Period (Years)
+                <span className="text-xs text-slate-500 font-normal">(time between purchase & resale)</span>
+              </h4>
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={holdingPeriodBySegment} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v.toFixed(1)} yrs`} domain={[0, 'auto']} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} width={75} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      formatter={(value, name, props) => {
+                        if (typeof value !== 'number') return ['-', 'Holding Period'];
+                        const item = props.payload;
+                        return [
+                          `${value.toFixed(1)} years (median: ${item.medianHoldingPeriod?.toFixed(1) || '-'} yrs)`,
+                          `Avg Holding Period (${item.resaleCount?.toLocaleString() || 0} resales)`
+                        ];
+                      }}
+                    />
+                    <Bar dataKey="avgHoldingPeriod" name="Avg Holding Period" radius={[0, 4, 4, 0]}>
+                      {holdingPeriodBySegment.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Resale Appreciation Bar Chart */}
+            <div className="bg-slate-800/30 rounded-lg p-4 border border-cyan-900/30">
+              <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-cyan-400" />
+                Avg Resale Appreciation
+                <span className="text-xs text-slate-500 font-normal">(price gain on resale)</span>
+              </h4>
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={holdingPeriodBySegment} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} width={75} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      formatter={(value, name, props) => {
+                        if (typeof value !== 'number') return ['-', 'Appreciation'];
+                        const item = props.payload;
+                        return [
+                          `${value >= 0 ? '+' : ''}${value.toFixed(1)}% (${item.positiveResaleRate?.toFixed(0) || 0}% profitable)`,
+                          `Avg Appreciation`
+                        ];
+                      }}
+                    />
+                    <Bar dataKey="avgAppreciation" name="Avg Appreciation" radius={[0, 4, 4, 0]}>
+                      {holdingPeriodBySegment.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.avgAppreciation >= 0 ? "#22c55e" : "#ef4444"} 
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Annualized Return Bar Chart */}
+            <div className="bg-slate-800/30 rounded-lg p-4 border border-cyan-900/30">
+              <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-cyan-400" />
+                Avg Annualized Return (CAGR)
+                <span className="text-xs text-slate-500 font-normal">(holding-period adjusted)</span>
+              </h4>
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={holdingPeriodBySegment} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} width={75} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                      formatter={(value) => {
+                        if (typeof value !== 'number') return ['-', 'Annualized Return'];
+                        return [
+                          `${value >= 0 ? '+' : ''}${value.toFixed(1)}% per year`,
+                          `Avg Annualized Return`
+                        ];
+                      }}
+                    />
+                    <Bar dataKey="avgAnnualizedReturn" name="Avg Annualized Return" radius={[0, 4, 4, 0]}>
+                      {holdingPeriodBySegment.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.avgAnnualizedReturn >= 0 ? "#22c55e" : "#ef4444"} 
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Comparison Stats */}
         {comparisonStats.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1074,9 +1605,25 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
                       </span>
                     </div>
                     <div className="bg-slate-800/50 rounded p-2">
-                      <span className="text-slate-400 block">Total Growth</span>
-                      <span className={`font-semibold ${stat.totalGrowth >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                        {stat.totalGrowth >= 0 ? "+" : ""}{stat.totalGrowth.toFixed(1)}%
+                      <span className="text-slate-400 block">Resale Rate</span>
+                      <span className={`font-semibold ${stat.avgResaleRate > 20 ? "text-emerald-400" : stat.avgResaleRate > 10 ? "text-amber-400" : "text-slate-300"}`}>
+                        {stat.avgResaleRate.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Resale stats row */}
+                  <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                    <div className="bg-cyan-900/20 rounded p-2 border border-cyan-900/30">
+                      <span className="text-slate-400 block">Resale Premium</span>
+                      <span className={`font-semibold ${stat.avgResalePremium >= 0 ? "text-cyan-400" : "text-rose-400"}`}>
+                        {stat.avgResalePremium >= 0 ? "+" : ""}{stat.avgResalePremium.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="bg-cyan-900/20 rounded p-2 border border-cyan-900/30">
+                      <span className="text-slate-400 block">Total Resales</span>
+                      <span className="font-semibold text-cyan-400">
+                        {stat.totalResales.toLocaleString()}
                       </span>
                     </div>
                   </div>
