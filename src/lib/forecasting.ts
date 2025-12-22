@@ -79,6 +79,273 @@ export function linearRegression(data: { x: number; y: number }[]): {
 }
 
 // ============================================================================
+// HOLT'S LINEAR EXPONENTIAL SMOOTHING (Double Exponential Smoothing)
+// Better for small samples - gives more weight to recent observations
+// ============================================================================
+
+export interface HoltForecastResult {
+  forecasts: { period: number; value: number; lower: number; upper: number }[];
+  level: number;        // Final smoothed level
+  trend: number;        // Final smoothed trend
+  alpha: number;        // Level smoothing parameter used
+  beta: number;         // Trend smoothing parameter used
+  mape: number;         // Mean Absolute Percentage Error (model fit)
+  fittedValues: number[]; // In-sample fitted values
+}
+
+/**
+ * Holt's Linear Exponential Smoothing
+ * 
+ * Better than linear regression for time series because:
+ * 1. Gives more weight to recent observations (exponential decay)
+ * 2. Captures both level and trend separately
+ * 3. Adapts to changing trends
+ * 4. Works well with limited data points
+ * 
+ * @param values - Array of historical values (chronological order)
+ * @param periodsAhead - Number of periods to forecast
+ * @param alpha - Level smoothing (0-1, higher = more weight to recent). Auto-optimized if not provided.
+ * @param beta - Trend smoothing (0-1, higher = more weight to recent trend). Auto-optimized if not provided.
+ */
+export function holtLinearSmoothing(
+  values: number[],
+  periodsAhead: number = 3,
+  alpha?: number,
+  beta?: number
+): HoltForecastResult {
+  const n = values.length;
+  
+  if (n < 2) {
+    return {
+      forecasts: [],
+      level: values[0] || 0,
+      trend: 0,
+      alpha: 0,
+      beta: 0,
+      mape: 0,
+      fittedValues: [],
+    };
+  }
+
+  // Auto-optimize alpha and beta if not provided
+  // Use grid search to minimize MAPE
+  if (alpha === undefined || beta === undefined) {
+    const optimized = optimizeHoltParameters(values);
+    alpha = optimized.alpha;
+    beta = optimized.beta;
+  }
+
+  // Initialize level and trend using first two observations
+  // This is a common initialization method
+  let level = values[0];
+  let trend = values[1] - values[0];
+
+  const fittedValues: number[] = [values[0]]; // First fitted value is just the first observation
+  
+  // Apply Holt's smoothing
+  for (let i = 1; i < n; i++) {
+    const prevLevel = level;
+    const prevTrend = trend;
+    
+    // Update level: weighted average of current value and previous forecast
+    level = alpha * values[i] + (1 - alpha) * (prevLevel + prevTrend);
+    
+    // Update trend: weighted average of current trend and previous trend
+    trend = beta * (level - prevLevel) + (1 - beta) * prevTrend;
+    
+    fittedValues.push(prevLevel + prevTrend); // One-step ahead forecast
+  }
+
+  // Calculate MAPE (Mean Absolute Percentage Error)
+  let mapeSum = 0;
+  let validCount = 0;
+  for (let i = 1; i < n; i++) {
+    if (values[i] !== 0) {
+      mapeSum += Math.abs((values[i] - fittedValues[i]) / values[i]);
+      validCount++;
+    }
+  }
+  const mape = validCount > 0 ? (mapeSum / validCount) * 100 : 0;
+
+  // Calculate standard deviation of residuals for confidence intervals
+  const residuals = values.slice(1).map((v, i) => v - fittedValues[i + 1]);
+  const residualMean = residuals.reduce((a, b) => a + b, 0) / residuals.length;
+  const residualVariance = residuals.reduce((sum, r) => sum + Math.pow(r - residualMean, 2), 0) / residuals.length;
+  const residualStd = Math.sqrt(residualVariance);
+
+  // Generate forecasts
+  const forecasts: { period: number; value: number; lower: number; upper: number }[] = [];
+  
+  for (let h = 1; h <= periodsAhead; h++) {
+    const forecast = level + h * trend;
+    
+    // Confidence interval widens with forecast horizon
+    // Using approximate prediction interval formula for Holt's method
+    const horizonFactor = Math.sqrt(1 + (h - 1) * (alpha * alpha) * (1 + h * beta));
+    const margin = 1.96 * residualStd * horizonFactor;
+    
+    forecasts.push({
+      period: h,
+      value: Math.max(0, forecast),
+      lower: Math.max(0, forecast - margin),
+      upper: forecast + margin,
+    });
+  }
+
+  return {
+    forecasts,
+    level,
+    trend,
+    alpha,
+    beta,
+    mape,
+    fittedValues,
+  };
+}
+
+/**
+ * Optimize Holt's parameters using grid search
+ * Minimizes MAPE (Mean Absolute Percentage Error)
+ */
+function optimizeHoltParameters(values: number[]): { alpha: number; beta: number } {
+  let bestAlpha = 0.3;
+  let bestBeta = 0.1;
+  let bestMape = Infinity;
+
+  // Grid search over parameter space
+  // For small datasets, we use a coarser grid
+  const alphaRange = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+  const betaRange = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5];
+
+  for (const alpha of alphaRange) {
+    for (const beta of betaRange) {
+      const result = holtLinearSmoothing(values, 1, alpha, beta);
+      if (result.mape < bestMape && result.mape > 0) {
+        bestMape = result.mape;
+        bestAlpha = alpha;
+        bestBeta = beta;
+      }
+    }
+  }
+
+  return { alpha: bestAlpha, beta: bestBeta };
+}
+
+/**
+ * Ensemble forecast combining multiple methods
+ * More robust than any single method for small samples
+ */
+export function ensembleForecast(
+  values: number[],
+  periodsAhead: number = 3
+): {
+  forecasts: { period: number; value: number; lower: number; upper: number }[];
+  methods: {
+    holt: { weight: number; contribution: number[] };
+    linear: { weight: number; contribution: number[] };
+    naive: { weight: number; contribution: number[] };
+  };
+  modelInfo: string;
+} {
+  const n = values.length;
+  
+  if (n < 3) {
+    // Not enough data for ensemble - use simple extrapolation
+    const lastValue = values[n - 1] || 0;
+    const trend = n >= 2 ? (values[n - 1] - values[n - 2]) : 0;
+    return {
+      forecasts: Array.from({ length: periodsAhead }, (_, i) => ({
+        period: i + 1,
+        value: Math.max(0, lastValue + trend * (i + 1)),
+        lower: Math.max(0, lastValue + trend * (i + 1) * 0.7),
+        upper: lastValue + trend * (i + 1) * 1.3,
+      })),
+      methods: {
+        holt: { weight: 0, contribution: [] },
+        linear: { weight: 0, contribution: [] },
+        naive: { weight: 1, contribution: Array.from({ length: periodsAhead }, (_, i) => lastValue + trend * (i + 1)) },
+      },
+      modelInfo: "Insufficient data - using simple trend extrapolation",
+    };
+  }
+
+  // Method 1: Holt's Linear Exponential Smoothing
+  const holtResult = holtLinearSmoothing(values, periodsAhead);
+  const holtForecasts = holtResult.forecasts.map(f => f.value);
+
+  // Method 2: Linear Regression
+  const linearData = values.map((y, x) => ({ x, y }));
+  const linearReg = linearRegression(linearData);
+  const linearForecasts = Array.from({ length: periodsAhead }, (_, i) => 
+    Math.max(0, linearReg.slope * (n + i) + linearReg.intercept)
+  );
+
+  // Method 3: Naive trend (last observation + average trend)
+  const avgTrend = (values[n - 1] - values[0]) / (n - 1);
+  const naiveForecasts = Array.from({ length: periodsAhead }, (_, i) => 
+    Math.max(0, values[n - 1] + avgTrend * (i + 1))
+  );
+
+  // Calculate weights based on recent performance (inverse of error)
+  // Give more weight to methods that fit recent data better
+  const calcRecentError = (fittedFn: (idx: number) => number) => {
+    // Focus on last 3 observations
+    const recentN = Math.min(3, n - 1);
+    let error = 0;
+    for (let i = n - recentN; i < n; i++) {
+      const fitted = fittedFn(i);
+      error += Math.abs((values[i] - fitted) / values[i]);
+    }
+    return error / recentN;
+  };
+
+  const holtError = calcRecentError((i) => holtResult.fittedValues[i] || values[i]);
+  const linearError = calcRecentError((i) => linearReg.slope * i + linearReg.intercept);
+  const naiveError = calcRecentError((i) => values[Math.max(0, i - 1)] + avgTrend);
+
+  // Convert errors to weights (inverse, normalized)
+  const totalInvError = 1 / (holtError + 0.01) + 1 / (linearError + 0.01) + 1 / (naiveError + 0.01);
+  const holtWeight = (1 / (holtError + 0.01)) / totalInvError;
+  const linearWeight = (1 / (linearError + 0.01)) / totalInvError;
+  const naiveWeight = (1 / (naiveError + 0.01)) / totalInvError;
+
+  // Combine forecasts with weights
+  const forecasts = Array.from({ length: periodsAhead }, (_, i) => {
+    const value = holtWeight * holtForecasts[i] + 
+                  linearWeight * linearForecasts[i] + 
+                  naiveWeight * naiveForecasts[i];
+    
+    // Confidence interval based on spread of methods
+    const spread = Math.max(
+      Math.abs(holtForecasts[i] - value),
+      Math.abs(linearForecasts[i] - value),
+      Math.abs(naiveForecasts[i] - value)
+    );
+    
+    // Widen confidence interval for further horizons
+    const horizonFactor = 1 + i * 0.3;
+    const margin = spread * horizonFactor * 1.5;
+    
+    return {
+      period: i + 1,
+      value: Math.max(0, value),
+      lower: Math.max(0, value - margin),
+      upper: value + margin,
+    };
+  });
+
+  return {
+    forecasts,
+    methods: {
+      holt: { weight: holtWeight, contribution: holtForecasts },
+      linear: { weight: linearWeight, contribution: linearForecasts },
+      naive: { weight: naiveWeight, contribution: naiveForecasts },
+    },
+    modelInfo: `Ensemble (Holt: ${(holtWeight * 100).toFixed(0)}%, Linear: ${(linearWeight * 100).toFixed(0)}%, Naive: ${(naiveWeight * 100).toFixed(0)}%)`,
+  };
+}
+
+// ============================================================================
 // RISK METRICS
 // ============================================================================
 

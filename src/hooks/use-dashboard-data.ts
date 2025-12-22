@@ -14,6 +14,7 @@ import {
 interface FilterOptionsData {
   regions: string[];
   propertyTypes: string[];
+  projects: string[];
   bedrooms: string[];
   years: number[];
   assetCategories: string[];

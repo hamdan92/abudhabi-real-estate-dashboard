@@ -19,13 +19,16 @@ import {
   PolarRadiusAxis,
   Radar,
   ReferenceLine,
+  Area,
+  ComposedChart,
 } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Transaction, UnitTransaction } from "@/types";
+import { Transaction, UnitTransaction, YearlyData } from "@/types";
 import { formatNumber } from "@/lib/utils";
 import { translate, translateProject } from "@/lib/translations";
 import { identifyResales } from "@/lib/resale-analysis";
-import { Plus, X, TrendingUp, Layers, Download, FileSpreadsheet, BarChart3, Activity, Target, Gauge, Repeat, Clock, DollarSign, Percent } from "lucide-react";
+import { ensembleForecast, holtLinearSmoothing } from "@/lib/forecasting";
+import { Plus, X, TrendingUp, Layers, Download, FileSpreadsheet, BarChart3, Activity, Target, Gauge, Repeat, Clock, DollarSign, Percent, Sparkles, Info, ChevronDown, ChevronUp } from "lucide-react";
 
 // Color palette for comparison lines
 const LINE_COLORS = [
@@ -227,6 +230,11 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
   
   // State for project search/filter
   const [projectSearch, setProjectSearch] = useState("");
+  
+  // Forecasting state
+  const [showForecast, setShowForecast] = useState(false);
+  const [forecastYears, setForecastYears] = useState(3);
+  const [showForecastInfo, setShowForecastInfo] = useState(false);
 
   // Get filter options
   const filterOptions = useMemo(() => {
@@ -532,6 +540,205 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
       };
     });
   }, [segmentMetrics, segments]);
+
+  // Calculate forecasts for each segment using Ensemble method
+  const forecastData = useMemo(() => {
+    if (!showForecast) return { chartDataWithForecast: chartData, forecasts: {} };
+    
+    const { metrics, years } = segmentMetrics;
+    const lastYear = years[years.length - 1];
+    
+    // Calculate forecasts per segment using ensemble of methods
+    const forecasts: Record<string, {
+      priceForecasts: { year: number; predicted: number; upper: number; lower: number; confidence: string }[];
+      volumeForecasts: { year: number; predicted: number; upper: number; lower: number }[];
+      yoyForecasts: { year: number; predicted: number; upper: number; lower: number }[];
+      mape: number;           // Mean Absolute Percentage Error
+      modelInfo: string;      // Which methods contribute and their weights
+      qualityRating: string;
+      trend: number;          // Detected trend per year
+      warnings: string[];
+      methodWeights: { holt: number; linear: number; naive: number };
+    }> = {};
+    
+    segments.forEach((segment) => {
+      const m = metrics[segment.id];
+      if (!m) return;
+      
+      // Extract price and volume values (chronological order)
+      const priceValues = years
+        .map(year => m.yearly[year]?.price || 0)
+        .filter(p => p > 0);
+      
+      const volumeValues = years
+        .map(year => m.yearly[year]?.volume || 0);
+      
+      if (priceValues.length < 3) {
+        forecasts[segment.id] = {
+          priceForecasts: [],
+          volumeForecasts: [],
+          yoyForecasts: [],
+          mape: 0,
+          modelInfo: "Insufficient Data",
+          qualityRating: "Insufficient Data",
+          trend: 0,
+          warnings: ["Less than 3 data points - forecasting unavailable"],
+          methodWeights: { holt: 0, linear: 0, naive: 0 },
+        };
+        return;
+      }
+      // Note: volumeForecasts and yoyForecasts now include upper/lower bounds
+      
+      // Use Ensemble forecasting (combines Holt's, Linear, and Naive methods)
+      const priceEnsemble = ensembleForecast(priceValues, forecastYears);
+      const volumeHolt = holtLinearSmoothing(volumeValues, forecastYears);
+      
+      // Determine quality rating based on MAPE
+      const holtResult = holtLinearSmoothing(priceValues, forecastYears);
+      const mape = holtResult.mape;
+      
+      let qualityRating = "Poor";
+      if (mape < 5) qualityRating = "Excellent";
+      else if (mape < 10) qualityRating = "Good";
+      else if (mape < 15) qualityRating = "Fair";
+      
+      const warnings: string[] = [];
+      if (mape > 15) {
+        warnings.push("High forecast error - significant uncertainty");
+      }
+      if (priceValues.length < 5) {
+        warnings.push("Limited data points - wider confidence intervals");
+      }
+      if (Math.abs(holtResult.trend) > priceValues[priceValues.length - 1] * 0.15) {
+        warnings.push("Strong trend detected - extrapolation may be unreliable");
+      }
+      
+      // Generate price forecasts
+      const priceForecasts: { year: number; predicted: number; upper: number; lower: number; confidence: string }[] = [];
+      
+      priceEnsemble.forecasts.forEach((f, i) => {
+        let confidence = "high";
+        if (mape > 15 || i > 2) confidence = "low";
+        else if (mape > 10 || i > 1) confidence = "medium";
+        
+        priceForecasts.push({
+          year: lastYear + f.period,
+          predicted: f.value,
+          upper: f.upper,
+          lower: f.lower,
+          confidence,
+        });
+      });
+      
+      // Generate volume forecasts with confidence intervals
+      const volumeForecasts = volumeHolt.forecasts.map(f => ({
+        year: lastYear + f.period,
+        predicted: Math.round(f.value),
+        upper: Math.round(f.upper),
+        lower: Math.max(0, Math.round(f.lower)),
+      }));
+      
+      // Generate YoY growth forecasts with confidence intervals (derived from price forecasts)
+      // YoY Growth = (currentPrice - previousPrice) / previousPrice * 100
+      const yoyForecasts: { year: number; predicted: number; upper: number; lower: number }[] = [];
+      const lastHistoricalPrice = priceValues[priceValues.length - 1];
+      
+      priceForecasts.forEach((pf, i) => {
+        const prevPrice = i === 0 ? lastHistoricalPrice : priceForecasts[i - 1].predicted;
+        const prevPriceUpper = i === 0 ? lastHistoricalPrice : priceForecasts[i - 1].upper;
+        const prevPriceLower = i === 0 ? lastHistoricalPrice : priceForecasts[i - 1].lower;
+        
+        // Calculate YoY for predicted, upper, and lower bounds
+        const yoyGrowth = prevPrice > 0 ? ((pf.predicted - prevPrice) / prevPrice) * 100 : 0;
+        // Upper bound: optimistic price vs conservative previous
+        const yoyUpper = prevPriceLower > 0 ? ((pf.upper - prevPriceLower) / prevPriceLower) * 100 : 0;
+        // Lower bound: conservative price vs optimistic previous
+        const yoyLower = prevPriceUpper > 0 ? ((pf.lower - prevPriceUpper) / prevPriceUpper) * 100 : 0;
+        
+        yoyForecasts.push({
+          year: pf.year,
+          predicted: yoyGrowth,
+          upper: Math.max(yoyGrowth, yoyUpper),  // Ensure upper >= predicted
+          lower: Math.min(yoyGrowth, yoyLower),  // Ensure lower <= predicted
+        });
+      });
+      
+      forecasts[segment.id] = {
+        priceForecasts,
+        volumeForecasts,
+        yoyForecasts,
+        mape,
+        modelInfo: priceEnsemble.modelInfo,
+        qualityRating,
+        trend: holtResult.trend,
+        warnings,
+        methodWeights: {
+          holt: priceEnsemble.methods.holt.weight,
+          linear: priceEnsemble.methods.linear.weight,
+          naive: priceEnsemble.methods.naive.weight,
+        },
+      };
+    });
+    
+    // Combine historical data with forecasts for charts
+    const forecastYearList = Array.from({ length: forecastYears }, (_, i) => lastYear + i + 1);
+    const allYears = [...years, ...forecastYearList];
+    
+    const chartDataWithForecast = allYears.map((year) => {
+      const isForecast = year > lastYear;
+      const dataPoint: Record<string, number | string | null | boolean> = { 
+        year,
+        isForecast,
+      };
+      
+      segments.forEach((segment) => {
+        const m = metrics[segment.id];
+        const f = forecasts[segment.id];
+        
+        if (!isForecast) {
+          // Historical data
+          dataPoint[segment.id] = m?.yearly[year]?.price || 0;
+          dataPoint[`${segment.id}_vol`] = m?.yearly[year]?.volume || 0;
+          dataPoint[`${segment.id}_yoy`] = m?.yoyGrowth[year] ?? null;
+          // Set forecast values to null for historical years
+          dataPoint[`${segment.id}_forecast`] = null;
+          dataPoint[`${segment.id}_upper`] = null;
+          dataPoint[`${segment.id}_lower`] = null;
+          dataPoint[`${segment.id}_vol_forecast`] = null;
+        } else {
+          // Forecast data
+          const forecastIdx = year - lastYear - 1;
+          const priceForecast = f?.priceForecasts[forecastIdx];
+          const volumeForecast = f?.volumeForecasts[forecastIdx];
+          const yoyForecast = f?.yoyForecasts?.[forecastIdx];
+          
+          // Set historical to null, forecast to values
+          dataPoint[segment.id] = null;
+          dataPoint[`${segment.id}_vol`] = null;
+          dataPoint[`${segment.id}_yoy`] = null;
+          
+          // Price forecast with confidence bands
+          dataPoint[`${segment.id}_forecast`] = priceForecast?.predicted || null;
+          dataPoint[`${segment.id}_upper`] = priceForecast?.upper || null;
+          dataPoint[`${segment.id}_lower`] = priceForecast?.lower || null;
+          
+          // Volume forecast with confidence bands
+          dataPoint[`${segment.id}_vol_forecast`] = volumeForecast?.predicted || null;
+          dataPoint[`${segment.id}_vol_upper`] = volumeForecast?.upper || null;
+          dataPoint[`${segment.id}_vol_lower`] = volumeForecast?.lower || null;
+          
+          // YoY forecast with confidence bands
+          dataPoint[`${segment.id}_yoy_forecast`] = yoyForecast?.predicted ?? null;
+          dataPoint[`${segment.id}_yoy_upper`] = yoyForecast?.upper ?? null;
+          dataPoint[`${segment.id}_yoy_lower`] = yoyForecast?.lower ?? null;
+        }
+      });
+      
+      return dataPoint;
+    });
+    
+    return { chartDataWithForecast, forecasts };
+  }, [showForecast, forecastYears, segmentMetrics, segments, chartData]);
 
   // Calculate holding period data using fingerprinting (cached)
   const holdingPeriodData = useMemo(() => {
@@ -1282,17 +1489,181 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
           </div>
         )}
 
+        {/* Forecasting Settings */}
+        <div className="mb-6 p-4 bg-gradient-to-r from-purple-900/20 to-slate-900/20 rounded-lg border border-purple-800/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-400" />
+                <span className="font-medium text-slate-200">Price Forecasting</span>
+              </div>
+              <button
+                onClick={() => setShowForecast(!showForecast)}
+                className={`relative w-11 h-6 rounded-full transition-colors ${
+                  showForecast ? 'bg-purple-600' : 'bg-slate-700'
+                }`}
+              >
+                <span
+                  className={`absolute top-[2px] left-[2px] w-5 h-5 bg-white rounded-full transition-transform ${
+                    showForecast ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+            
+            {showForecast && (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">Forecast Years:</span>
+                  <select
+                    value={forecastYears}
+                    onChange={(e) => setForecastYears(Number(e.target.value))}
+                    className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-slate-200"
+                  >
+                    <option value={1}>1 Year</option>
+                    <option value={2}>2 Years</option>
+                    <option value={3}>3 Years</option>
+                    <option value={5}>5 Years</option>
+                  </select>
+                </div>
+                <button
+                  onClick={() => setShowForecastInfo(!showForecastInfo)}
+                  className="text-slate-400 hover:text-purple-400 transition-colors flex items-center gap-1"
+                >
+                  <Info className="w-4 h-4" />
+                  {showForecastInfo ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {/* Forecast Info Panel */}
+          {showForecast && showForecastInfo && (
+            <div className="mt-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+              <h5 className="text-sm font-medium text-purple-300 mb-2">Ensemble Forecasting Method</h5>
+              <p className="text-xs text-slate-400 mb-3">
+                Predictions use an <span className="text-purple-300 font-medium">Ensemble of 3 methods</span>, 
+                weighted by recent accuracy. Better for small datasets than single-model approaches.
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs mb-4">
+                <div className="p-2 bg-slate-900/50 rounded">
+                  <span className="text-cyan-400 font-medium">1. Holt&apos;s Exponential Smoothing</span>
+                  <p className="text-slate-500 mt-1">
+                    Gives more weight to recent data. Captures level + trend separately.
+                  </p>
+                </div>
+                <div className="p-2 bg-slate-900/50 rounded">
+                  <span className="text-blue-400 font-medium">2. Linear Regression</span>
+                  <p className="text-slate-500 mt-1">
+                    Fits best-fit line. Good when trend is consistent.
+                  </p>
+                </div>
+                <div className="p-2 bg-slate-900/50 rounded">
+                  <span className="text-green-400 font-medium">3. Naive Trend</span>
+                  <p className="text-slate-500 mt-1">
+                    Last value + average trend. Robust baseline.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <span className="text-slate-500">Quality Indicators (MAPE):</span>
+                  <ul className="mt-1 space-y-1">
+                    <li className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      <span className="text-slate-300">MAPE &lt; 5%: Excellent</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                      <span className="text-slate-300">MAPE &lt; 10%: Good</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      <span className="text-slate-300">MAPE &lt; 15%: Fair</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                      <span className="text-slate-300">MAPE ≥ 15%: Poor</span>
+                    </li>
+                  </ul>
+                  <p className="mt-2 text-slate-600 italic text-[10px]">
+                    MAPE = Mean Absolute Percentage Error
+                  </p>
+                </div>
+                <div>
+                  <span className="text-slate-500">Why Ensemble?</span>
+                  <ul className="mt-1 space-y-1 text-slate-400">
+                    <li>• Combines strengths of multiple methods</li>
+                    <li>• Reduces risk of overfitting</li>
+                    <li>• Weights adapt to which method fits best</li>
+                    <li>• More robust with limited data (6-7 years)</li>
+                  </ul>
+                  <p className="mt-2 text-amber-400/80 italic">
+                    ⚠️ Forecasts are projections, not guarantees.
+                  </p>
+                </div>
+              </div>
+              
+              {/* Model Quality per Segment */}
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <span className="text-xs text-slate-500">Model Quality by Segment:</span>
+                <div className="flex flex-wrap gap-3 mt-2">
+                  {segments.map((segment) => {
+                    const f = forecastData.forecasts[segment.id];
+                    const mapeColor = !f ? "text-slate-500"
+                      : f.mape < 5 ? "text-emerald-400" 
+                      : f.mape < 10 ? "text-green-400" 
+                      : f.mape < 15 ? "text-amber-400" 
+                      : "text-red-400";
+                    return (
+                      <div key={segment.id} className="flex flex-col gap-1 px-3 py-2 bg-slate-900/50 rounded">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: segment.color }}></span>
+                          <span className="text-xs text-slate-300 font-medium">{segment.name}</span>
+                        </div>
+                        {f && f.mape > 0 ? (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-medium ${mapeColor}`}>
+                                MAPE: {f.mape.toFixed(1)}%
+                              </span>
+                              <span className="text-xs text-slate-500">({f.qualityRating})</span>
+                            </div>
+                            <div className="text-[10px] text-slate-600">
+                              {f.modelInfo}
+                            </div>
+                            {f.trend !== 0 && (
+                              <div className="text-[10px] text-slate-500">
+                                Trend: {f.trend > 0 ? '+' : ''}{f.trend.toFixed(0)} AED/yr
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-xs text-slate-500">No data</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* All Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Price Trend Chart */}
+          {/* Price Trend Chart with Forecasting */}
           <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700">
             <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-amber-400" />
               Price/SQM Trend
+              {showForecast && <span className="text-xs text-purple-400 font-normal ml-1">(+ {forecastYears}yr forecast)</span>}
             </h4>
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                <ComposedChart data={showForecast ? forecastData.chartDataWithForecast : chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                   <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
                   <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`} />
@@ -1301,28 +1672,83 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
                     labelStyle={{ color: "#f1f5f9" }}
                     formatter={(value, name) => {
                       if (typeof value !== 'number') return ['-', name];
-                      const segment = segments.find((s) => s.id === name);
-                      return [`AED ${formatNumber(value)}/sqm`, segment?.name || name];
+                      const nameStr = String(name);
+                      const isForecast = nameStr.includes('_forecast');
+                      const isUpper = nameStr.includes('_upper');
+                      const isLower = nameStr.includes('_lower');
+                      if (isUpper || isLower) return null; // Hide upper/lower in tooltip
+                      const segmentId = nameStr.replace('_forecast', '');
+                      const segment = segments.find((s) => s.id === segmentId);
+                      const label = isForecast ? `${segment?.name} (Forecast)` : segment?.name;
+                      return [`AED ${formatNumber(value)}/sqm`, label || name];
                     }}
                   />
-                  <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} wrapperStyle={{ fontSize: 11 }} />
+                  <Legend 
+                    formatter={(value) => {
+                      const v = String(value);
+                      if (v.includes('_upper') || v.includes('_lower')) return null;
+                      const isForecast = v.includes('_forecast');
+                      const segmentId = v.replace('_forecast', '');
+                      const segment = segments.find((s) => s.id === segmentId);
+                      return isForecast ? `${segment?.name} (Forecast)` : segment?.name || v;
+                    }} 
+                    wrapperStyle={{ fontSize: 11 }} 
+                  />
+                  {/* Historical data lines */}
                   {segments.map((segment) => (
                     <Line key={segment.id} type="monotone" dataKey={segment.id} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 3 }} connectNulls />
                   ))}
-                </LineChart>
+                  {/* Forecast confidence bands */}
+                  {showForecast && segments.map((segment) => (
+                    <Area
+                      key={`${segment.id}_band`}
+                      type="monotone"
+                      dataKey={`${segment.id}_upper`}
+                      stroke="none"
+                      fill={segment.color}
+                      fillOpacity={0.15}
+                      legendType="none"
+                      connectNulls
+                    />
+                  ))}
+                  {/* Forecast lines (dashed) */}
+                  {showForecast && segments.map((segment) => (
+                    <Line
+                      key={`${segment.id}_forecast`}
+                      type="monotone"
+                      dataKey={`${segment.id}_forecast`}
+                      stroke={segment.color}
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={{ fill: segment.color, r: 3, strokeWidth: 2, stroke: "#1e293b" }}
+                      connectNulls
+                    />
+                  ))}
+                  {/* Forecast boundary line */}
+                  {showForecast && (
+                    <ReferenceLine
+                      x={segmentMetrics.years[segmentMetrics.years.length - 1]}
+                      stroke="#8b5cf6"
+                      strokeDasharray="3 3"
+                      strokeOpacity={0.5}
+                      label={{ value: 'Forecast →', position: 'top', fill: '#8b5cf6', fontSize: 10 }}
+                    />
+                  )}
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* YoY Growth Chart */}
+          {/* YoY Growth Chart with Forecasting and Confidence Bands */}
           <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700">
             <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
               <Activity className="w-4 h-4 text-emerald-400" />
               Year-over-Year Growth
+              {showForecast && <span className="text-xs text-purple-400 font-normal ml-1">(+ {forecastYears}yr forecast)</span>}
             </h4>
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                <ComposedChart data={showForecast ? forecastData.chartDataWithForecast : chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                   <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
                   <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${value?.toFixed(0)}%`} domain={['auto', 'auto']} />
@@ -1331,30 +1757,87 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
                     labelStyle={{ color: "#f1f5f9" }}
                     formatter={(value, name) => {
                       if (value === null || value === undefined) return ['-', name];
-                      const segmentId = String(name).replace('_yoy', '');
+                      const nameStr = String(name);
+                      // Skip upper/lower in tooltip
+                      if (nameStr.includes('_upper') || nameStr.includes('_lower')) return null;
+                      const isForecast = nameStr.includes('_yoy_forecast');
+                      const segmentId = nameStr.replace('_yoy', '').replace('_forecast', '');
                       const segment = segments.find((s) => s.id === segmentId);
-                      return [`${Number(value).toFixed(1)}%`, segment?.name || name];
+                      const label = isForecast ? `${segment?.name} (Forecast)` : segment?.name;
+                      return [`${Number(value).toFixed(1)}%`, label || name];
                     }}
                   />
-                  <Legend formatter={(value) => { const segmentId = String(value).replace('_yoy', ''); return segments.find((s) => s.id === segmentId)?.name || value; }} wrapperStyle={{ fontSize: 11 }} />
+                  <Legend 
+                    formatter={(value) => { 
+                      const nameStr = String(value);
+                      // Hide upper/lower from legend
+                      if (nameStr.includes('_upper') || nameStr.includes('_lower')) return '';
+                      const isForecast = nameStr.includes('_yoy_forecast');
+                      const segmentId = nameStr.replace('_yoy', '').replace('_forecast', ''); 
+                      const segment = segments.find((s) => s.id === segmentId);
+                      return isForecast ? `${segment?.name} (Forecast)` : segment?.name || value; 
+                    }} 
+                    wrapperStyle={{ fontSize: 11 }} 
+                  />
+                  {/* Zero reference line */}
                   <Line type="monotone" dataKey={() => 0} stroke="#475569" strokeDasharray="5 5" dot={false} legendType="none" />
+                  {/* YoY Forecast confidence bands */}
+                  {showForecast && segments.map((segment) => (
+                    <Area
+                      key={`${segment.id}_yoy_band`}
+                      type="monotone"
+                      dataKey={`${segment.id}_yoy_upper`}
+                      stroke="none"
+                      fill={segment.color}
+                      fillOpacity={0.15}
+                      legendType="none"
+                      connectNulls
+                    />
+                  ))}
+                  {showForecast && segments.map((segment) => (
+                    <Area
+                      key={`${segment.id}_yoy_band_lower`}
+                      type="monotone"
+                      dataKey={`${segment.id}_yoy_lower`}
+                      stroke="none"
+                      fill="#0f172a"
+                      fillOpacity={1}
+                      legendType="none"
+                      connectNulls
+                    />
+                  ))}
+                  {/* Historical YoY lines */}
                   {segments.map((segment) => (
                     <Line key={segment.id} type="monotone" dataKey={`${segment.id}_yoy`} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 3 }} connectNulls />
                   ))}
-                </LineChart>
+                  {/* Forecast YoY lines (dashed) */}
+                  {showForecast && segments.map((segment) => (
+                    <Line 
+                      key={`${segment.id}_yoy_forecast`} 
+                      type="monotone" 
+                      dataKey={`${segment.id}_yoy_forecast`} 
+                      stroke={segment.color} 
+                      strokeWidth={2} 
+                      strokeDasharray="5 5"
+                      dot={{ fill: segment.color, r: 3, strokeDasharray: "0" }} 
+                      connectNulls 
+                    />
+                  ))}
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Volume Chart */}
+          {/* Volume Chart with Forecasting and Confidence Bands */}
           <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700">
             <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-blue-400" />
               Transaction Volume
+              {showForecast && <span className="text-xs text-purple-400 font-normal ml-1">(+ {forecastYears}yr forecast)</span>}
             </h4>
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                <ComposedChart data={showForecast ? forecastData.chartDataWithForecast : chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                   <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
                   <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(0)}K` : value} />
@@ -1363,16 +1846,80 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
                     labelStyle={{ color: "#f1f5f9" }}
                     formatter={(value, name) => {
                       if (typeof value !== 'number') return ['-', name];
-                      const segmentId = String(name).replace('_vol', '');
+                      const nameStr = String(name);
+                      // Skip upper/lower in tooltip
+                      if (nameStr.includes('_upper') || nameStr.includes('_lower')) return null;
+                      const isForecast = nameStr.includes('_vol_forecast');
+                      const segmentId = nameStr.replace('_vol', '').replace('_forecast', '');
                       const segment = segments.find((s) => s.id === segmentId);
-                      return [`${formatNumber(value)} transactions`, segment?.name || name];
+                      const label = isForecast ? `${segment?.name} (Forecast)` : segment?.name;
+                      return [`${formatNumber(Math.round(value))} transactions`, label || name];
                     }}
                   />
-                  <Legend formatter={(value) => { const segmentId = String(value).replace('_vol', ''); return segments.find((s) => s.id === segmentId)?.name || value; }} wrapperStyle={{ fontSize: 11 }} />
+                  <Legend 
+                    formatter={(value) => { 
+                      const v = String(value);
+                      // Hide upper/lower from legend
+                      if (v.includes('_upper') || v.includes('_lower')) return '';
+                      const isForecast = v.includes('_vol_forecast');
+                      const segmentId = v.replace('_vol', '').replace('_forecast', '');
+                      const segment = segments.find((s) => s.id === segmentId);
+                      return isForecast ? `${segment?.name} (Forecast)` : segment?.name || v; 
+                    }} 
+                    wrapperStyle={{ fontSize: 11 }} 
+                  />
+                  {/* Volume forecast confidence bands */}
+                  {showForecast && segments.map((segment) => (
+                    <Area
+                      key={`${segment.id}_vol_band`}
+                      type="monotone"
+                      dataKey={`${segment.id}_vol_upper`}
+                      stroke="none"
+                      fill={segment.color}
+                      fillOpacity={0.15}
+                      legendType="none"
+                      connectNulls
+                    />
+                  ))}
+                  {showForecast && segments.map((segment) => (
+                    <Area
+                      key={`${segment.id}_vol_band_lower`}
+                      type="monotone"
+                      dataKey={`${segment.id}_vol_lower`}
+                      stroke="none"
+                      fill="#0f172a"
+                      fillOpacity={1}
+                      legendType="none"
+                      connectNulls
+                    />
+                  ))}
+                  {/* Historical volume lines */}
                   {segments.map((segment) => (
                     <Line key={segment.id} type="monotone" dataKey={`${segment.id}_vol`} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 3 }} connectNulls />
                   ))}
-                </LineChart>
+                  {/* Forecast volume lines (dashed) */}
+                  {showForecast && segments.map((segment) => (
+                    <Line
+                      key={`${segment.id}_vol_forecast`}
+                      type="monotone"
+                      dataKey={`${segment.id}_vol_forecast`}
+                      stroke={segment.color}
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={{ fill: segment.color, r: 3, strokeWidth: 2, stroke: "#1e293b" }}
+                      connectNulls
+                    />
+                  ))}
+                  {/* Forecast boundary line */}
+                  {showForecast && (
+                    <ReferenceLine
+                      x={segmentMetrics.years[segmentMetrics.years.length - 1]}
+                      stroke="#8b5cf6"
+                      strokeDasharray="3 3"
+                      strokeOpacity={0.5}
+                    />
+                  )}
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
@@ -2227,4 +2774,6 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     </Card>
   );
 }
+
+
 

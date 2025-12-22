@@ -2,9 +2,9 @@
 
 import { useState, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Filter, X, ChevronDown, ChevronUp, Calendar, MapPin, Home, Tag } from "lucide-react";
+import { Filter, X, ChevronDown, ChevronUp, Calendar, MapPin, Home, Tag, Building } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { translate } from "@/lib/translations";
+import { translate, translateProject } from "@/lib/translations";
 
 interface FilterOption {
   value: string;
@@ -16,14 +16,17 @@ interface FiltersProps {
   years: number[];
   regions: string[];
   propertyTypes: string[];
+  projects?: string[];
   saleTypes?: string[];
   selectedYears: number[];
   selectedRegions: string[];
   selectedPropertyTypes: string[];
+  selectedProjects: string[];
   selectedSaleTypes: string[];
   onYearsChange: (years: number[]) => void;
   onRegionsChange: (regions: string[]) => void;
   onPropertyTypesChange: (types: string[]) => void;
+  onProjectsChange: (projects: string[]) => void;
   onSaleTypesChange: (types: string[]) => void;
   onClearAll: () => void;
 }
@@ -94,18 +97,22 @@ export function Filters({
   years,
   regions,
   propertyTypes,
+  projects = [],
   saleTypes = ["جاهزة", "على المخطط", "أمر محكمة"],
   selectedYears,
   selectedRegions,
   selectedPropertyTypes,
+  selectedProjects,
   selectedSaleTypes,
   onYearsChange,
   onRegionsChange,
   onPropertyTypesChange,
+  onProjectsChange,
   onSaleTypesChange,
   onClearAll,
 }: FiltersProps) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [projectSearchTerm, setProjectSearchTerm] = useState("");
 
   // Count active filters
   const activeFiltersCount = useMemo(() => {
@@ -113,17 +120,28 @@ export function Filters({
       selectedYears.length +
       selectedRegions.length +
       selectedPropertyTypes.length +
+      selectedProjects.length +
       selectedSaleTypes.length
     );
-  }, [selectedYears, selectedRegions, selectedPropertyTypes, selectedSaleTypes]);
+  }, [selectedYears, selectedRegions, selectedPropertyTypes, selectedProjects, selectedSaleTypes]);
 
   // Filter regions by search term
   const filteredRegions = useMemo(() => {
     if (!searchTerm) return regions.slice(0, 20);
     return regions.filter((r) =>
-      r.toLowerCase().includes(searchTerm.toLowerCase())
+      r.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      translate(r, 'region').toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [regions, searchTerm]);
+
+  // Filter projects by search term
+  const filteredProjects = useMemo(() => {
+    if (!projectSearchTerm) return projects.slice(0, 30);
+    return projects.filter((p) =>
+      p.toLowerCase().includes(projectSearchTerm.toLowerCase()) ||
+      translateProject(p).toLowerCase().includes(projectSearchTerm.toLowerCase())
+    );
+  }, [projects, projectSearchTerm]);
 
   // Toggle handlers
   const toggleYear = (year: number) => {
@@ -147,6 +165,14 @@ export function Filters({
       onPropertyTypesChange(selectedPropertyTypes.filter((t) => t !== type));
     } else {
       onPropertyTypesChange([...selectedPropertyTypes, type]);
+    }
+  };
+
+  const toggleProject = (project: string) => {
+    if (selectedProjects.includes(project)) {
+      onProjectsChange(selectedProjects.filter((p) => p !== project));
+    } else {
+      onProjectsChange([...selectedProjects, project]);
     }
   };
 
@@ -262,6 +288,53 @@ export function Filters({
             ))}
           </div>
         </FilterSection>
+
+        {/* Projects Filter */}
+        {projects.length > 0 && (
+          <FilterSection title="Projects" icon={Building}>
+            <div className="space-y-2">
+              <input
+                type="text"
+                placeholder="Search projects..."
+                value={projectSearchTerm}
+                onChange={(e) => setProjectSearchTerm(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+              <div className="max-h-48 overflow-y-auto space-y-0.5">
+                {filteredProjects.map((project) => (
+                  <CheckboxItem
+                    key={project}
+                    value={project}
+                    label={translateProject(project)}
+                    checked={selectedProjects.includes(project)}
+                    onChange={() => toggleProject(project)}
+                  />
+                ))}
+              </div>
+              {selectedProjects.length > 0 && (
+                <div className="pt-2 border-t border-slate-700/50">
+                  <p className="text-xs text-slate-500 mb-1">Selected ({selectedProjects.length}):</p>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedProjects.map((project) => (
+                      <span
+                        key={project}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-purple-500/20 text-purple-400 rounded"
+                      >
+                        {translateProject(project).slice(0, 20)}...
+                        <button
+                          onClick={() => toggleProject(project)}
+                          className="hover:text-purple-300"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </FilterSection>
+        )}
 
         {/* Sale Type Filter */}
         <FilterSection title="Sale Type" icon={Tag}>

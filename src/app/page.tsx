@@ -12,6 +12,7 @@ import {
   RegionChart,
   PropertyTypeChart,
   MarketSegmentChart,
+  YoYComparisonChart,
 } from "@/components/dashboard/charts";
 import {
   Building2,
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [selectedPropertyTypes, setSelectedPropertyTypes] = useState<string[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [selectedSaleTypes, setSelectedSaleTypes] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -51,9 +53,10 @@ export default function Dashboard() {
       selectedYears.length > 0 ||
       selectedRegions.length > 0 ||
       selectedPropertyTypes.length > 0 ||
+      selectedProjects.length > 0 ||
       selectedSaleTypes.length > 0
     );
-  }, [selectedYears, selectedRegions, selectedPropertyTypes, selectedSaleTypes]);
+  }, [selectedYears, selectedRegions, selectedPropertyTypes, selectedProjects, selectedSaleTypes]);
 
   // Apply filters to transactions and recalculate data
   const filteredData = useMemo(() => {
@@ -76,6 +79,11 @@ export default function Dashboard() {
       filtered = filtered.filter((t) => selectedPropertyTypes.includes(t.propertyType));
     }
 
+    // Apply project filter
+    if (selectedProjects.length > 0) {
+      filtered = filtered.filter((t) => selectedProjects.includes(t.project));
+    }
+
     // Apply sale type filter
     if (selectedSaleTypes.length > 0) {
       filtered = filtered.filter((t) => selectedSaleTypes.includes(t.saleType));
@@ -95,13 +103,14 @@ export default function Dashboard() {
       propertyTypeData: calculatePropertyTypeData(filtered),
       marketSegments: calculateMarketSegments(filtered),
     };
-  }, [transactions, selectedYears, selectedRegions, selectedPropertyTypes, selectedSaleTypes]);
+  }, [transactions, selectedYears, selectedRegions, selectedPropertyTypes, selectedProjects, selectedSaleTypes]);
 
   // Clear all filters
   const clearAllFilters = () => {
     setSelectedYears([]);
     setSelectedRegions([]);
     setSelectedPropertyTypes([]);
+    setSelectedProjects([]);
     setSelectedSaleTypes([]);
   };
 
@@ -164,7 +173,7 @@ export default function Dashboard() {
             <span className="hidden sm:inline">Filters</span>
             {hasActiveFilters && (
               <span className="ml-1 w-5 h-5 flex items-center justify-center text-xs bg-white/20 rounded-full">
-                {selectedYears.length + selectedRegions.length + selectedPropertyTypes.length + selectedSaleTypes.length}
+                {selectedYears.length + selectedRegions.length + selectedPropertyTypes.length + selectedProjects.length + selectedSaleTypes.length}
               </span>
             )}
           </button>
@@ -235,13 +244,16 @@ export default function Dashboard() {
                 years={filterOptions.years}
                 regions={filterOptions.regions}
                 propertyTypes={filterOptions.propertyTypes}
+                projects={filterOptions.projects}
                 selectedYears={selectedYears}
                 selectedRegions={selectedRegions}
                 selectedPropertyTypes={selectedPropertyTypes}
+                selectedProjects={selectedProjects}
                 selectedSaleTypes={selectedSaleTypes}
                 onYearsChange={setSelectedYears}
                 onRegionsChange={setSelectedRegions}
                 onPropertyTypesChange={setSelectedPropertyTypes}
+                onProjectsChange={setSelectedProjects}
                 onSaleTypesChange={setSelectedSaleTypes}
                 onClearAll={clearAllFilters}
               />
@@ -292,7 +304,7 @@ export default function Dashboard() {
             </div>
 
             {/* Summary Stats - All Transaction Types */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
               <Card className="p-4">
                 <p className="text-sm text-slate-400 mb-1">
                   {hasActiveFilters ? "Filtered (All Types)" : "All Transactions"}
@@ -333,18 +345,61 @@ export default function Dashboard() {
                   {new Set(displayData.transactions.map((t) => t.project)).size}
                 </p>
               </Card>
+              <Card className="p-4 bg-amber-500/10 border-amber-500/30">
+                <p className="text-sm text-amber-400 mb-1">CAGR (Price/SQM)</p>
+                <p className="text-2xl font-bold text-amber-400">
+                  {yearlyData.length >= 2 
+                    ? `${((Math.pow(
+                        yearlyData[yearlyData.length - 1].medianPricePerSqm / yearlyData[0].medianPricePerSqm,
+                        1 / (yearlyData.length - 1)
+                      ) - 1) * 100).toFixed(1)}%`
+                    : "N/A"
+                  }
+                </p>
+                <p className="text-xs text-amber-500/70 mt-1">
+                  {yearlyData.length >= 2 
+                    ? `${yearlyData[0].year}-${yearlyData[yearlyData.length - 1].year}`
+                    : ""
+                  }
+                </p>
+              </Card>
             </div>
 
             {/* Charts Row 1: Price & Volume Trends */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              <PriceTrendChart data={yearlyData} />
-              <TransactionVolumeChart data={yearlyData} />
+              <PriceTrendChart data={yearlyData} transactions={displayData.transactions} />
+              <TransactionVolumeChart data={yearlyData} transactions={displayData.transactions} />
+            </div>
+
+            {/* Year-over-Year Analysis - Right after Price Trends */}
+            <div className="mb-8">
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-amber-400" />
+                Year-over-Year Analysis
+              </h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <YoYComparisonChart 
+                  data={yearlyData}
+                  transactions={displayData.transactions.filter(t => t.assetCategory === "سكني")}
+                  metric="medianPricePerSqm"
+                  title="Median Price/SQM Growth"
+                  showPropertyTypeTabs={true}
+                />
+                <YoYComparisonChart 
+                  data={yearlyData}
+                  transactions={displayData.transactions.filter(t => t.assetCategory === "سكني")}
+                  metric="transactions"
+                  title="Transaction Volume Growth"
+                  showPropertyTypeTabs={true}
+                />
+              </div>
             </div>
 
             {/* Charts Row 2: Regional Analysis & Property Types */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               <RegionChart
                 data={regionData}
+                transactions={displayData.transactions}
                 title="Top 10 Regions by Transactions"
                 metric="transactions"
               />
@@ -355,15 +410,17 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               <RegionChart
                 data={[...regionData].sort((a, b) => b.avgPricePerSqm - a.avgPricePerSqm)}
+                transactions={displayData.transactions}
                 title="Top 10 Regions by Price/SQM"
                 metric="avgPricePerSqm"
               />
               <RegionChart
                 data={[...regionData].sort((a, b) => b.totalValue - a.totalValue)}
+                transactions={displayData.transactions}
                 title="Top 10 Regions by Total Value"
                 metric="totalValue"
               />
-        </div>
+            </div>
 
             {/* Market Segments */}
             <div className="mb-8">
@@ -374,6 +431,7 @@ export default function Dashboard() {
               <MarketSegmentChart
                 saleTypeData={marketSegments.saleType}
                 marketTypeData={marketSegments.marketType}
+                transactions={displayData.transactions}
               />
             </div>
 

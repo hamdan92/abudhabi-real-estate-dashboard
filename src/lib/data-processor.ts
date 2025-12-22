@@ -103,6 +103,7 @@ export interface FilterOptions {
   years?: number[];
   regions?: string[];
   propertyTypes?: string[];
+  projects?: string[];
   saleTypes?: string[];
   marketTypes?: string[];
   bedrooms?: string[];
@@ -123,6 +124,7 @@ export function filterTransactions(
     if (filters.years?.length && !filters.years.includes(t.year)) return false;
     if (filters.regions?.length && !filters.regions.includes(t.region)) return false;
     if (filters.propertyTypes?.length && !filters.propertyTypes.includes(t.propertyType)) return false;
+    if (filters.projects?.length && !filters.projects.includes(t.project)) return false;
     if (filters.saleTypes?.length && !filters.saleTypes.includes(t.saleType)) return false;
     if (filters.marketTypes?.length && !filters.marketTypes.includes(t.marketType)) return false;
     if (filters.bedrooms?.length && !filters.bedrooms.includes(t.propertyDesign)) return false;
@@ -735,6 +737,7 @@ export function getFilterOptions(transactions: Transaction[]) {
   // Count occurrences for each property type
   const propertyTypeCounts = new Map<string, number>();
   const regionCounts = new Map<string, number>();
+  const projectCounts = new Map<string, number>();
   
   transactions.forEach((t) => {
     if (t.propertyType) {
@@ -742,6 +745,9 @@ export function getFilterOptions(transactions: Transaction[]) {
     }
     if (t.region) {
       regionCounts.set(t.region, (regionCounts.get(t.region) || 0) + 1);
+    }
+    if (t.project) {
+      projectCounts.set(t.project, (projectCounts.get(t.project) || 0) + 1);
     }
   });
 
@@ -755,9 +761,15 @@ export function getFilterOptions(transactions: Transaction[]) {
     .sort((a, b) => b[1] - a[1])
     .map(([region]) => region);
 
+  // Sort projects by count (descending)
+  const projects = [...projectCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([project]) => project);
+
   return {
     regions,
     propertyTypes,
+    projects,
     bedrooms: [...new Set(transactions.map((t) => t.propertyDesign))].filter(Boolean).sort(),
     years: [...new Set(transactions.map((t) => t.year))].filter(Boolean).sort(),
     assetCategories: [...new Set(transactions.map((t) => t.assetCategory))].filter(Boolean).sort(),

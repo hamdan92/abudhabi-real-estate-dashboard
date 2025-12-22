@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -12,11 +13,14 @@ import {
 } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { formatNumber, formatCurrency } from "@/lib/utils";
-import { RegionData } from "@/types";
+import { RegionData, Transaction } from "@/types";
 import { translate } from "@/lib/translations";
+import { cn } from "@/lib/utils";
+import { average, median } from "@/lib/utils";
 
 interface RegionChartProps {
   data: RegionData[];
+  transactions?: Transaction[];
   title?: string;
   metric?: "transactions" | "avgPricePerSqm" | "totalValue";
   limit?: number;
@@ -35,13 +39,77 @@ const COLORS = [
   "#6366f1",
 ];
 
+// Using actual Arabic characters from data
+const PROPERTY_TYPES = ["All", "شقة", "ڨيلا", "تاونهاوس / ڨيلا شبه منفصلة", "أرض لڨيلا"];
+
+const PROPERTY_TYPE_COLORS: Record<string, string> = {
+  "All": "#f59e0b",
+  "شقة": "#3b82f6",
+  "ڨيلا": "#10b981",
+  "تاونهاوس / ڨيلا شبه منفصلة": "#8b5cf6",
+  "أرض لڨيلا": "#ef4444",
+};
+
 export function RegionChart({
   data,
+  transactions = [],
   title = "Top Regions",
   metric = "transactions",
   limit = 10,
 }: RegionChartProps) {
-  const chartData = data.slice(0, limit);
+  const [selectedType, setSelectedType] = useState<string>("All");
+
+  // Calculate data filtered by property type
+  const chartData = useMemo(() => {
+    if (selectedType === "All" || !transactions.length) {
+      return data.slice(0, limit);
+    }
+
+    // Filter transactions by property type
+    const filtered = transactions.filter(t => 
+      t.propertyType === selectedType && 
+      t.assetCategory === "سكني"
+    );
+
+    if (filtered.length === 0) return data.slice(0, limit);
+
+    // Group by region
+    const regionMap = new Map<string, {
+      transactions: number;
+      totalValue: number;
+      prices: number[];
+    }>();
+
+    filtered.forEach(t => {
+      if (!regionMap.has(t.region)) {
+        regionMap.set(t.region, { transactions: 0, totalValue: 0, prices: [] });
+      }
+      const entry = regionMap.get(t.region)!;
+      entry.transactions++;
+      entry.totalValue += t.totalPrice || 0;
+      if (t.pricePerSqm > 0 && t.pricePerSqm < 100000) {
+        entry.prices.push(t.pricePerSqm);
+      }
+    });
+
+    // Convert to array and sort by metric
+    const result = Array.from(regionMap.entries())
+      .map(([region, entry]) => ({
+        region,
+        regionEn: translate(region, 'region'),
+        transactions: entry.transactions,
+        totalValue: entry.totalValue,
+        avgPricePerSqm: entry.prices.length > 0 
+          ? entry.prices.reduce((a, b) => a + b, 0) / entry.prices.length 
+          : 0,
+        medianPricePerSqm: 0,
+        yoyGrowth: 0,
+      }))
+      .sort((a, b) => b[metric] - a[metric])
+      .slice(0, limit);
+
+    return result;
+  }, [data, transactions, selectedType, metric, limit]);
 
   const getMetricLabel = () => {
     switch (metric) {
@@ -71,8 +139,31 @@ export function RegionChart({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-sm sm:text-base">{title}</CardTitle>
+          {transactions.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {PROPERTY_TYPES.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setSelectedType(type)}
+                  className={cn(
+                    "px-2 py-1 text-xs rounded-md transition-colors",
+                    selectedType === type
+                      ? "text-white"
+                      : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                  )}
+                  style={{
+                    backgroundColor: selectedType === type ? PROPERTY_TYPE_COLORS[type] : undefined,
+                  }}
+                >
+                  {type === "All" ? "All" : translate(type, "propertyType")}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="h-[400px]">
@@ -115,7 +206,10 @@ export function RegionChart({
               />
               <Bar dataKey={metric} radius={[0, 4, 4, 0]}>
                 {chartData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={selectedType === "All" ? COLORS[index % COLORS.length] : PROPERTY_TYPE_COLORS[selectedType]} 
+                  />
                 ))}
               </Bar>
             </BarChart>
@@ -125,4 +219,3 @@ export function RegionChart({
     </Card>
   );
 }
-
