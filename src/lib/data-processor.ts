@@ -59,14 +59,9 @@ function parseExcelDate(value: unknown): Date {
   return new Date();
 }
 
-// Load and parse Excel file
-export async function loadExcelData(buffer: ArrayBuffer): Promise<Transaction[]> {
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const rawData = XLSX.utils.sheet_to_json(sheet);
-
-  return (rawData as Record<string, unknown>[])
+// Process pre-converted JSON data (Safari-compatible, no xlsx parsing at runtime)
+export function processJsonData(rawData: Record<string, unknown>[]): Transaction[] {
+  return rawData
     .map((row, index) => {
       const transaction: Partial<Transaction> = { id: index };
 
@@ -94,6 +89,16 @@ export async function loadExcelData(buffer: ArrayBuffer): Promise<Transaction[]>
       return transaction as Transaction;
     })
     .filter((t) => t.registrationDate && !isNaN(t.registrationDate.getTime()));
+}
+
+// Load and parse Excel file (kept for backward compatibility, not used in production)
+export async function loadExcelData(buffer: ArrayBuffer): Promise<Transaction[]> {
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rawData = XLSX.utils.sheet_to_json(sheet);
+
+  return processJsonData(rawData as Record<string, unknown>[]);
 }
 
 // Filter transactions with comprehensive options

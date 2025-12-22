@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { DashboardData, SegmentedDashboardData, Transaction } from "@/types";
 import {
-  loadExcelData,
+  processJsonData,
   processDashboardData,
   processSegmentedDashboardData,
   getFilterOptions,
@@ -49,14 +49,14 @@ export function useDashboardData(): UseDashboardDataReturn {
       setIsLoading(true);
       setError(null);
 
-      // Fetch the Excel file
-      const response = await fetch("/data-3.xlsx");
+      // Fetch the pre-processed JSON data (Safari-compatible)
+      const response = await fetch("/data.json");
       if (!response.ok) {
         throw new Error("Failed to load data file");
       }
 
-      const buffer = await response.arrayBuffer();
-      const loadedTransactions = await loadExcelData(buffer);
+      const rawData = await response.json();
+      const loadedTransactions = processJsonData(rawData);
 
       setTransactions(loadedTransactions);
 
