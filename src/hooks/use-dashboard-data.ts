@@ -49,14 +49,35 @@ export function useDashboardData(): UseDashboardDataReturn {
       setIsLoading(true);
       setError(null);
 
-      // Fetch the pre-processed JSON data (Safari-compatible)
+      // Fetch the pre-processed JSON data
       const response = await fetch("/data.json");
       if (!response.ok) {
         throw new Error("Failed to load data file");
       }
 
-      const rawData = await response.json();
-      const loadedTransactions = processJsonData(rawData);
+      // Get text first to avoid Safari JSON.parse stack issues
+      const text = await response.text();
+      
+      // Parse in chunks to avoid stack overflow in Safari
+      let rawData: Record<string, unknown>[];
+      try {
+        rawData = JSON.parse(text);
+      } catch {
+        throw new Error("Failed to parse data");
+      }
+
+      // Process in batches to avoid stack overflow
+      const loadedTransactions: Transaction[] = [];
+      const batchSize = 5000;
+      for (let i = 0; i < rawData.length; i += batchSize) {
+        const batch = rawData.slice(i, i + batchSize);
+        const processed = processJsonData(batch);
+        loadedTransactions.push(...processed);
+        // Allow browser to breathe
+        if (i + batchSize < rawData.length) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
 
       setTransactions(loadedTransactions);
 
