@@ -569,6 +569,132 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
         </div>
       </CardHeader>
       <CardContent>
+        {/* Quick Comparison Presets */}
+        <div className="mb-6 pb-6 border-b border-slate-700">
+          <h4 className="text-sm font-medium text-slate-300 mb-3">Quick Comparisons</h4>
+          
+          {/* Unit Types */}
+          <div className="mb-4">
+            <span className="text-xs text-slate-500 uppercase tracking-wider">By Property Type</span>
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button
+                onClick={() => setSegments([
+                  { id: "apt", name: "Apartments", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
+                  { id: "villa", name: "Villas", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
+                  { id: "townhouse", name: "Townhouses", region: "all", propertyType: "تاونهاوس / ڨيلا شبه منفصلة", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-lg transition-colors"
+              >
+                Apt vs Villa vs Townhouse
+              </button>
+              <button
+                onClick={() => setSegments([
+                  { id: "apt-ready", name: "Apartment - Ready", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "جاهزة", color: LINE_COLORS[0] },
+                  { id: "apt-offplan", name: "Apartment - Off-Plan", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "على المخطط", color: LINE_COLORS[1] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-lg transition-colors"
+              >
+                Apt: Ready vs Off-Plan
+              </button>
+              <button
+                onClick={() => setSegments([
+                  { id: "villa-ready", name: "Villa - Ready", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "جاهزة", color: LINE_COLORS[0] },
+                  { id: "villa-offplan", name: "Villa - Off-Plan", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "على المخطط", color: LINE_COLORS[1] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-lg transition-colors"
+              >
+                Villa: Ready vs Off-Plan
+              </button>
+            </div>
+          </div>
+
+          {/* Regions */}
+          <div className="mb-4">
+            <span className="text-xs text-slate-500 uppercase tracking-wider">By Region</span>
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button
+                onClick={() => setSegments([
+                  { id: "overall", name: "Overall Market", region: "all", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
+                  { id: "yas", name: "Yas Island", region: "جزيرة ياس", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
+                  { id: "saadiyat", name: "Saadiyat", region: "جزيرة السعديات", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
+                  { id: "reem", name: "Reem Island", region: "جزيرة الريم", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[3] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors"
+              >
+                Premium Islands vs Market
+              </button>
+              <button
+                onClick={() => setSegments([
+                  { id: "yas-villa", name: "Villa - Yas", region: "جزيرة ياس", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
+                  { id: "saadiyat-villa", name: "Villa - Saadiyat", region: "جزيرة السعديات", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
+                  { id: "reem-villa", name: "Villa - Reem", region: "جزيرة الريم", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors"
+              >
+                Villas: Yas vs Saadiyat vs Reem
+              </button>
+              <button
+                onClick={() => setSegments([
+                  { id: "yas-apt", name: "Apt - Yas", region: "جزيرة ياس", propertyType: "شقة", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
+                  { id: "saadiyat-apt", name: "Apt - Saadiyat", region: "جزيرة السعديات", propertyType: "شقة", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
+                  { id: "reem-apt", name: "Apt - Reem", region: "جزيرة الريم", propertyType: "شقة", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors"
+              >
+                Apartments: Yas vs Saadiyat vs Reem
+              </button>
+              <button
+                onClick={() => setSegments([
+                  { id: "khalifa", name: "Khalifa City", region: "مدينة خليفة", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
+                  { id: "shamkha", name: "Al Shamkha", region: "الشامخة", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
+                  { id: "reef", name: "Al Reef", region: "الريف", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
+                  { id: "raha", name: "Al Raha", region: "الراحة", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[3] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors"
+              >
+                Mainland Areas
+              </button>
+            </div>
+          </div>
+
+          {/* Bedrooms & Sale Type */}
+          <div>
+            <span className="text-xs text-slate-500 uppercase tracking-wider">By Bedrooms & Sale Type</span>
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button
+                onClick={() => setSegments([
+                  { id: "studio", name: "Studio", region: "all", propertyType: "all", bedrooms: "Studio", saleType: "all", color: LINE_COLORS[0] },
+                  { id: "1br", name: "1 BR", region: "all", propertyType: "all", bedrooms: "1 BR", saleType: "all", color: LINE_COLORS[1] },
+                  { id: "2br", name: "2 BR", region: "all", propertyType: "all", bedrooms: "2 BR", saleType: "all", color: LINE_COLORS[2] },
+                  { id: "3br", name: "3 BR", region: "all", propertyType: "all", bedrooms: "3 BR", saleType: "all", color: LINE_COLORS[3] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
+              >
+                Studio vs 1BR vs 2BR vs 3BR
+              </button>
+              <button
+                onClick={() => setSegments([
+                  { id: "3br", name: "3 BR", region: "all", propertyType: "all", bedrooms: "3 BR", saleType: "all", color: LINE_COLORS[0] },
+                  { id: "4br", name: "4 BR", region: "all", propertyType: "all", bedrooms: "4 BR", saleType: "all", color: LINE_COLORS[1] },
+                  { id: "5br", name: "5 BR", region: "all", propertyType: "all", bedrooms: "5 BR", saleType: "all", color: LINE_COLORS[2] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
+              >
+                3BR vs 4BR vs 5BR
+              </button>
+              <button
+                onClick={() => setSegments([
+                  { id: "ready", name: "Ready Properties", region: "all", propertyType: "all", bedrooms: "all", saleType: "جاهزة", color: LINE_COLORS[0] },
+                  { id: "offplan", name: "Off-Plan Properties", region: "all", propertyType: "all", bedrooms: "all", saleType: "على المخطط", color: LINE_COLORS[1] },
+                ])}
+                className="px-3 py-1.5 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
+              >
+                Ready vs Off-Plan
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Active Segments */}
         <div className="flex flex-wrap gap-2 mb-6">
           {segments.map((segment) => (
@@ -1042,71 +1168,6 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
           </div>
         )}
 
-        {/* Quick Comparison Presets */}
-        <div className="mt-6 pt-6 border-t border-slate-700">
-          <h4 className="text-sm font-medium text-slate-400 mb-3">Quick Comparisons</h4>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => {
-                setSegments([
-                  { id: "yas-villa", name: "Villa - Yas Island", region: "جزيرة ياس", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "saadiyat-villa", name: "Villa - Saadiyat", region: "جزيرة السعديات", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "reem-villa", name: "Villa - Reem Island", region: "جزيرة الريم", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
-                ]);
-              }}
-              className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
-            >
-              Villas: Yas vs Saadiyat vs Reem
-            </button>
-            <button
-              onClick={() => {
-                setSegments([
-                  { id: "overall", name: "Overall Market", region: "all", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "yas-all", name: "Yas Island", region: "جزيرة ياس", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "saadiyat-all", name: "Saadiyat Island", region: "جزيرة السعديات", propertyType: "all", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
-                ]);
-              }}
-              className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
-            >
-              Yas vs Saadiyat vs Market
-            </button>
-            <button
-              onClick={() => {
-                setSegments([
-                  { id: "apt", name: "Apartments", region: "all", propertyType: "شقة", bedrooms: "all", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "villa", name: "Villas", region: "all", propertyType: "ڨيلا", bedrooms: "all", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "townhouse", name: "Townhouses", region: "all", propertyType: "تاونهاوس / ڨيلا شبه منفصلة", bedrooms: "all", saleType: "all", color: LINE_COLORS[2] },
-                ]);
-              }}
-              className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
-            >
-              Apt vs Villa vs Townhouse
-            </button>
-            <button
-              onClick={() => {
-                setSegments([
-                  { id: "ready", name: "Ready Properties", region: "all", propertyType: "all", bedrooms: "all", saleType: "جاهزة", color: LINE_COLORS[0] },
-                  { id: "offplan", name: "Off-Plan Properties", region: "all", propertyType: "all", bedrooms: "all", saleType: "على المخطط", color: LINE_COLORS[1] },
-                ]);
-              }}
-              className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
-            >
-              Ready vs Off-Plan
-            </button>
-            <button
-              onClick={() => {
-                setSegments([
-                  { id: "2br", name: "2 BR - All", region: "all", propertyType: "all", bedrooms: "2 BR", saleType: "all", color: LINE_COLORS[0] },
-                  { id: "3br", name: "3 BR - All", region: "all", propertyType: "all", bedrooms: "3 BR", saleType: "all", color: LINE_COLORS[1] },
-                  { id: "4br", name: "4 BR - All", region: "all", propertyType: "all", bedrooms: "4 BR", saleType: "all", color: LINE_COLORS[2] },
-                ]);
-              }}
-              className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
-            >
-              2BR vs 3BR vs 4BR
-            </button>
-          </div>
-        </div>
       </CardContent>
     </Card>
   );

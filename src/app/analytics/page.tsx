@@ -9,12 +9,10 @@ import {
   SeasonalityHeatmap,
   BedroomAnalysisChart,
   RegionBenchmarkChart,
-  PropertyTypeAnalysisChart,
   SaleTypeAnalysisChart,
-  SegmentComparisonTool,
   TrendComparisonTool,
 } from "@/components/dashboard/charts";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   TrendingUp,
   Calendar,
@@ -23,14 +21,12 @@ import {
   ArrowLeft,
   Percent,
   Home,
-  Building2,
   ArrowRightLeft,
-  Filter,
   Layers,
 } from "lucide-react";
 import Link from "next/link";
 
-type TabType = "overview" | "unit-types" | "ready-vs-offplan" | "compare" | "trends";
+type TabType = "overview" | "ready-vs-offplan" | "trends";
 
 export default function AnalyticsPage() {
   const { data, segmentedData, transactions, isLoading, error, refetch } = useDashboardData();
@@ -62,16 +58,15 @@ export default function AnalyticsPage() {
 
   const { yearlyData, regionData, bedroomData } = data;
   const { propertyTypeAnalysis, saleTypeAnalysis, readyVsOffPlan } = segmentedData;
+  // Note: propertyTypeAnalysis is used in the quick stats section
 
   // Filter to residential transactions for analysis
   const residentialTxns = transactions.filter((t) => t.assetCategory === "سكني");
 
   const tabs = [
     { id: "overview" as TabType, label: "Overview", icon: BarChart3 },
-    { id: "unit-types" as TabType, label: "By Unit Type", icon: Building2 },
+    { id: "trends" as TabType, label: "Trend Comparison", icon: TrendingUp },
     { id: "ready-vs-offplan" as TabType, label: "Ready vs Off-Plan", icon: ArrowRightLeft },
-    { id: "compare" as TabType, label: "Compare Segments", icon: Filter },
-    { id: "trends" as TabType, label: "Trend Compare", icon: TrendingUp },
   ];
 
   return (
@@ -247,23 +242,6 @@ export default function AnalyticsPage() {
           </>
         )}
 
-        {activeTab === "unit-types" && (
-          <section>
-            <div className="flex items-center gap-2 mb-6">
-              <Building2 className="w-6 h-6 text-amber-400" />
-              <h3 className="text-2xl font-bold text-white">
-                Analysis by Property Type
-              </h3>
-            </div>
-            <p className="text-slate-400 mb-6">
-              Compare price trends, growth rates, and market share across different property
-              types (Apartments, Villas, Townhouses, etc.)
-            </p>
-
-            <PropertyTypeAnalysisChart data={propertyTypeAnalysis} />
-          </section>
-        )}
-
         {activeTab === "ready-vs-offplan" && (
           <section>
             <div className="flex items-center gap-2 mb-6">
@@ -279,21 +257,6 @@ export default function AnalyticsPage() {
               saleTypeData={saleTypeAnalysis}
               readyVsOffPlan={readyVsOffPlan}
             />
-          </section>
-        )}
-
-        {activeTab === "compare" && (
-          <section>
-            <div className="flex items-center gap-2 mb-6">
-              <Filter className="w-6 h-6 text-amber-400" />
-              <h3 className="text-2xl font-bold text-white">Segment Comparison Tool</h3>
-            </div>
-            <p className="text-slate-400 mb-6">
-              Compare regions with the same property type, sale type, and bedroom
-              configuration. Filter to compare like-for-like.
-            </p>
-
-            <SegmentComparisonTool transactions={transactions} />
           </section>
         )}
 
