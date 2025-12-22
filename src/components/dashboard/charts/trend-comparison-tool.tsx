@@ -10,12 +10,23 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  BarChart,
+  Bar,
+  Cell,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
 } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Transaction } from "@/types";
 import { formatNumber } from "@/lib/utils";
 import { translate } from "@/lib/translations";
-import { Plus, X, TrendingUp, Layers, Download, FileSpreadsheet } from "lucide-react";
+import { Plus, X, TrendingUp, TrendingDown, Layers, Download, FileSpreadsheet, BarChart3, Activity, Target, Gauge } from "lucide-react";
+
+// Chart types available for comparison
+type ChartType = "price" | "yoyGrowth" | "cagr" | "volume" | "volatility" | "radar";
 
 // Color palette for comparison lines
 const LINE_COLORS = [
@@ -207,6 +218,8 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     bedrooms: "all",
     saleType: "all",
   });
+  
+  const [activeChart, setActiveChart] = useState<ChartType>("price");
 
   // Get filter options
   const filterOptions = useMemo(() => {
@@ -237,58 +250,223 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     };
   }, [transactions]);
 
-  // Calculate trend data for each segment
-  const chartData = useMemo(() => {
+  // Helper function to filter transactions for a segment and year
+  const filterSegmentYear = (segment: Segment, year?: number) => {
+    let filtered = transactions.filter((t) => t.assetCategory === "سكني");
+    
+    if (year !== undefined) {
+      filtered = filtered.filter((t) => t.year === year);
+    }
+    if (segment.region !== "all") {
+      filtered = filtered.filter((t) => t.region === segment.region);
+    }
+    if (segment.propertyType !== "all") {
+      filtered = filtered.filter((t) => t.propertyType === segment.propertyType);
+    }
+    if (segment.bedrooms !== "all") {
+      filtered = filtered.filter((t) => {
+        const design = t.propertyDesign || "";
+        if (segment.bedrooms === "Studio") return design.includes("استوديو") || design.includes("ستوديو") || design.toLowerCase().includes("studio");
+        if (segment.bedrooms === "1 BR") return design.includes("غرفة نوم واحدة") || design.includes("1 غرفة") || design.includes("١");
+        if (segment.bedrooms === "2 BR") return design.includes("غرفتين") || design.includes("2 غرف") || design.includes("٢");
+        if (segment.bedrooms === "3 BR") return design.includes("3 غرف") || design.includes("٣");
+        if (segment.bedrooms === "4 BR") return design.includes("4 غرف") || design.includes("٤");
+        if (segment.bedrooms === "5 BR") return design.includes("5 غرف") || design.includes("٥");
+        if (segment.bedrooms === "6+ BR") return design.includes("6 غرف") || design.includes("٦") || design.includes("7") || design.includes("٧");
+        return true;
+      });
+    }
+    if (segment.saleType !== "all") {
+      filtered = filtered.filter((t) => t.saleType === segment.saleType);
+    }
+    return filtered;
+  };
+
+  // Calculate median of an array
+  const calcMedian = (arr: number[]): number => {
+    if (arr.length === 0) return 0;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  };
+
+  // Calculate standard deviation
+  const calcStdDev = (arr: number[]): number => {
+    if (arr.length < 2) return 0;
+    const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+    const variance = arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / arr.length;
+    return Math.sqrt(variance);
+  };
+
+  // Calculate all metrics for each segment by year
+  const segmentMetrics = useMemo(() => {
     const years = [...new Set(transactions.map((t) => t.year))].sort();
+    
+    const metrics: Record<string, {
+      yearly: Record<number, { price: number; volume: number; totalValue: number }>;
+      yoyGrowth: Record<number, number>;
+      volatility: number;
+      cagr: number;
+      avgVolume: number;
+      totalTransactions: number;
+    }> = {};
+    
+    segments.forEach((segment) => {
+      const yearly: Record<number, { price: number; volume: number; totalValue: number }> = {};
+      const prices: number[] = [];
+      
+      years.forEach((year) => {
+        const filtered = filterSegmentYear(segment, year);
+        const yearPrices = filtered.map((t) => t.pricePerSqm).filter((p) => p > 0 && p < 100000);
+        const medianPrice = calcMedian(yearPrices);
+        
+        yearly[year] = {
+          price: medianPrice,
+          volume: filtered.length,
+          totalValue: filtered.reduce((sum, t) => sum + (t.totalPrice || 0), 0),
+        };
+        
+        if (medianPrice > 0) prices.push(medianPrice);
+      });
+      
+      // Calculate YoY growth
+      const yoyGrowth: Record<number, number> = {};
+      years.forEach((year, idx) => {
+        if (idx > 0 && yearly[year].price > 0 && yearly[years[idx - 1]].price > 0) {
+          yoyGrowth[year] = ((yearly[year].price - yearly[years[idx - 1]].price) / yearly[years[idx - 1]].price) * 100;
+        }
+      });
+      
+      // Calculate volatility (coefficient of variation of prices)
+      const volatility = prices.length > 1 
+        ? (calcStdDev(prices) / (prices.reduce((a, b) => a + b, 0) / prices.length)) * 100 
+        : 0;
+      
+      // Calculate CAGR
+      const firstYearWithData = years.find((y) => yearly[y].price > 0);
+      const lastYearWithData = [...years].reverse().find((y) => yearly[y].price > 0);
+      let cagr = 0;
+      if (firstYearWithData && lastYearWithData && firstYearWithData !== lastYearWithData) {
+        const numYears = lastYearWithData - firstYearWithData;
+        const startPrice = yearly[firstYearWithData].price;
+        const endPrice = yearly[lastYearWithData].price;
+        if (startPrice > 0 && numYears > 0) {
+          cagr = (Math.pow(endPrice / startPrice, 1 / numYears) - 1) * 100;
+        }
+      }
+      
+      // Calculate average volume
+      const volumes = Object.values(yearly).map((y) => y.volume);
+      const avgVolume = volumes.reduce((a, b) => a + b, 0) / volumes.length;
+      
+      metrics[segment.id] = {
+        yearly,
+        yoyGrowth,
+        volatility,
+        cagr,
+        avgVolume,
+        totalTransactions: filterSegmentYear(segment).length,
+      };
+    });
+    
+    return { metrics, years };
+  }, [transactions, segments]);
+
+  // Generate chart data based on active chart type
+  const chartData = useMemo(() => {
+    const { metrics, years } = segmentMetrics;
     
     return years.map((year) => {
       const dataPoint: Record<string, number | string> = { year };
       
       segments.forEach((segment) => {
-        // Filter transactions for this segment
-        let filtered = transactions.filter((t) => t.year === year);
+        const m = metrics[segment.id];
+        if (!m) return;
         
-        if (segment.region !== "all") {
-          filtered = filtered.filter((t) => t.region === segment.region);
-        }
-        if (segment.propertyType !== "all") {
-          filtered = filtered.filter((t) => t.propertyType === segment.propertyType);
-        }
-        if (segment.bedrooms !== "all") {
-          filtered = filtered.filter((t) => {
-            const design = t.propertyDesign || "";
-            // Check for both Western numerals (1,2,3...) and Arabic numerals (١,٢,٣...)
-            if (segment.bedrooms === "Studio") return design.includes("استوديو") || design.includes("ستوديو") || design.toLowerCase().includes("studio");
-            if (segment.bedrooms === "1 BR") return design.includes("غرفة نوم واحدة") || design.includes("1 غرفة") || design.includes("١");
-            if (segment.bedrooms === "2 BR") return design.includes("غرفتين") || design.includes("2 غرف") || design.includes("٢");
-            if (segment.bedrooms === "3 BR") return design.includes("3 غرف") || design.includes("٣");
-            if (segment.bedrooms === "4 BR") return design.includes("4 غرف") || design.includes("٤");
-            if (segment.bedrooms === "5 BR") return design.includes("5 غرف") || design.includes("٥");
-            if (segment.bedrooms === "6+ BR") return design.includes("6 غرف") || design.includes("٦") || design.includes("7") || design.includes("٧");
-            return true;
-          });
-        }
-        if (segment.saleType !== "all") {
-          filtered = filtered.filter((t) => t.saleType === segment.saleType);
-        }
-        
-        // Calculate median price per sqm
-        const prices = filtered
-          .map((t) => t.pricePerSqm)
-          .filter((p) => p > 0 && p < 100000)
-          .sort((a, b) => a - b);
-        
-        if (prices.length > 0) {
-          const mid = Math.floor(prices.length / 2);
-          dataPoint[segment.id] = prices.length % 2 !== 0
-            ? prices[mid]
-            : (prices[mid - 1] + prices[mid]) / 2;
+        switch (activeChart) {
+          case "price":
+            dataPoint[segment.id] = m.yearly[year]?.price || 0;
+            break;
+          case "yoyGrowth":
+            dataPoint[segment.id] = m.yoyGrowth[year] ?? null;
+            break;
+          case "volume":
+            dataPoint[segment.id] = m.yearly[year]?.volume || 0;
+            break;
+          case "volatility":
+          case "cagr":
+          case "radar":
+            // These are single values, not time series
+            break;
         }
       });
       
       return dataPoint;
     });
-  }, [transactions, segments]);
+  }, [segmentMetrics, segments, activeChart]);
+
+  // Generate comparison bar data for CAGR and Volatility
+  const comparisonBarData = useMemo(() => {
+    const { metrics } = segmentMetrics;
+    
+    return segments.map((segment) => {
+      const m = metrics[segment.id];
+      return {
+        name: segment.name,
+        id: segment.id,
+        color: segment.color,
+        cagr: m?.cagr || 0,
+        volatility: m?.volatility || 0,
+        avgVolume: m?.avgVolume || 0,
+        totalTransactions: m?.totalTransactions || 0,
+      };
+    });
+  }, [segmentMetrics, segments]);
+
+  // Generate radar chart data
+  const radarData = useMemo(() => {
+    const { metrics } = segmentMetrics;
+    const maxValues = {
+      cagr: Math.max(...segments.map((s) => Math.abs(metrics[s.id]?.cagr || 0))),
+      stability: Math.max(...segments.map((s) => 100 - (metrics[s.id]?.volatility || 0))),
+      volume: Math.max(...segments.map((s) => metrics[s.id]?.totalTransactions || 0)),
+      latestPrice: Math.max(...segments.map((s) => {
+        const years = Object.keys(metrics[s.id]?.yearly || {}).map(Number).sort();
+        return metrics[s.id]?.yearly[years[years.length - 1]]?.price || 0;
+      })),
+    };
+    
+    const radarMetrics = ["Growth (CAGR)", "Stability", "Volume", "Price Level"];
+    
+    return radarMetrics.map((metric) => {
+      const point: Record<string, string | number> = { metric };
+      
+      segments.forEach((segment) => {
+        const m = metrics[segment.id];
+        if (!m) return;
+        
+        const years = Object.keys(m.yearly).map(Number).sort();
+        const latestPrice = m.yearly[years[years.length - 1]]?.price || 0;
+        
+        switch (metric) {
+          case "Growth (CAGR)":
+            point[segment.id] = maxValues.cagr > 0 ? (Math.abs(m.cagr) / maxValues.cagr) * 100 : 0;
+            break;
+          case "Stability":
+            point[segment.id] = maxValues.stability > 0 ? ((100 - m.volatility) / maxValues.stability) * 100 : 0;
+            break;
+          case "Volume":
+            point[segment.id] = maxValues.volume > 0 ? (m.totalTransactions / maxValues.volume) * 100 : 0;
+            break;
+          case "Price Level":
+            point[segment.id] = maxValues.latestPrice > 0 ? (latestPrice / maxValues.latestPrice) * 100 : 0;
+            break;
+        }
+      });
+      
+      return point;
+    });
+  }, [segmentMetrics, segments]);
 
   // Generate segment name
   const generateSegmentName = (seg: Partial<Segment>): string => {
@@ -348,28 +526,38 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
 
   // Calculate comparison stats
   const comparisonStats = useMemo(() => {
+    const { metrics, years } = segmentMetrics;
+    
     return segments.map((segment) => {
-      const segmentData = chartData
-        .map((d) => d[segment.id] as number)
-        .filter((v) => v !== undefined);
+      const m = metrics[segment.id];
+      if (!m) return null;
       
-      if (segmentData.length < 2) return null;
+      const sortedYears = years.filter((y) => m.yearly[y]?.price > 0).sort();
+      if (sortedYears.length < 2) return null;
       
-      const latest = segmentData[segmentData.length - 1];
-      const first = segmentData[0];
-      const totalGrowth = ((latest - first) / first) * 100;
-      const cagr = (Math.pow(latest / first, 1 / (segmentData.length - 1)) - 1) * 100;
+      const latestYear = sortedYears[sortedYears.length - 1];
+      const firstYear = sortedYears[0];
+      const latestPrice = m.yearly[latestYear]?.price || 0;
+      const firstPrice = m.yearly[firstYear]?.price || 0;
+      const totalGrowth = firstPrice > 0 ? ((latestPrice - firstPrice) / firstPrice) * 100 : 0;
+      
+      // Get latest YoY growth
+      const latestYoY = m.yoyGrowth[latestYear] ?? 0;
       
       return {
         id: segment.id,
         name: segment.name,
         color: segment.color,
-        latestPrice: latest,
+        latestPrice,
         totalGrowth,
-        cagr,
+        cagr: m.cagr,
+        volatility: m.volatility,
+        latestYoY,
+        totalTransactions: m.totalTransactions,
+        avgVolume: m.avgVolume,
       };
     }).filter(Boolean);
-  }, [chartData, segments]);
+  }, [segmentMetrics, segments]);
 
   return (
     <Card>
@@ -512,56 +700,222 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
           </div>
         )}
 
-        {/* Chart */}
+        {/* Chart Type Selector */}
+        <div className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-slate-700">
+          <button
+            onClick={() => setActiveChart("price")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+              activeChart === "price" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            <TrendingUp className="w-4 h-4" />
+            Price/SQM Trend
+          </button>
+          <button
+            onClick={() => setActiveChart("yoyGrowth")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+              activeChart === "yoyGrowth" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            YoY Growth
+          </button>
+          <button
+            onClick={() => setActiveChart("volume")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+              activeChart === "volume" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            Transaction Volume
+          </button>
+          <button
+            onClick={() => setActiveChart("cagr")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+              activeChart === "cagr" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            <Target className="w-4 h-4" />
+            CAGR Comparison
+          </button>
+          <button
+            onClick={() => setActiveChart("volatility")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+              activeChart === "volatility" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            <Gauge className="w-4 h-4" />
+            Stability Analysis
+          </button>
+          <button
+            onClick={() => setActiveChart("radar")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+              activeChart === "radar" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            Multi-Factor Radar
+          </button>
+        </div>
+
+        {/* Charts */}
         <div className="h-[400px] mb-6">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis
-                dataKey="year"
-                tick={{ fill: "#94a3b8", fontSize: 12 }}
-                axisLine={{ stroke: "#475569" }}
-              />
-              <YAxis
-                tick={{ fill: "#94a3b8", fontSize: 12 }}
-                axisLine={{ stroke: "#475569" }}
-                tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
-                domain={["auto", "auto"]}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#1e293b",
-                  border: "1px solid #334155",
-                  borderRadius: "8px",
-                }}
-                labelStyle={{ color: "#f1f5f9" }}
-                formatter={(value, name) => {
-                  if (typeof value !== 'number') return ['-', name];
-                  const segment = segments.find((s) => s.id === name);
-                  return [`AED ${formatNumber(value)}/sqm`, segment?.name || name];
-                }}
-              />
-              <Legend
-                wrapperStyle={{ color: "#94a3b8" }}
-                formatter={(value) => {
-                  const segment = segments.find((s) => s.id === value);
-                  return segment?.name || value;
-                }}
-              />
-              {segments.map((segment) => (
-                <Line
-                  key={segment.id}
-                  type="monotone"
-                  dataKey={segment.id}
-                  name={segment.id}
-                  stroke={segment.color}
-                  strokeWidth={2}
-                  dot={{ fill: segment.color, r: 4 }}
-                  connectNulls
+          {/* Price Trend Chart */}
+          {activeChart === "price" && (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} />
+                <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                  labelStyle={{ color: "#f1f5f9" }}
+                  formatter={(value, name) => {
+                    if (typeof value !== 'number') return ['-', name];
+                    const segment = segments.find((s) => s.id === name);
+                    return [`AED ${formatNumber(value)}/sqm`, segment?.name || name];
+                  }}
                 />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+                <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} />
+                {segments.map((segment) => (
+                  <Line key={segment.id} type="monotone" dataKey={segment.id} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 4 }} connectNulls />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* YoY Growth Chart */}
+          {activeChart === "yoyGrowth" && (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} />
+                <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${value?.toFixed(0)}%`} domain={['auto', 'auto']} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                  labelStyle={{ color: "#f1f5f9" }}
+                  formatter={(value, name) => {
+                    if (value === null || value === undefined) return ['-', name];
+                    const segment = segments.find((s) => s.id === name);
+                    return [`${Number(value).toFixed(1)}%`, segment?.name || name];
+                  }}
+                />
+                <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} />
+                {/* Reference line at 0% */}
+                <Line type="monotone" dataKey={() => 0} stroke="#475569" strokeDasharray="5 5" dot={false} legendType="none" />
+                {segments.map((segment) => (
+                  <Line key={segment.id} type="monotone" dataKey={segment.id} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 4 }} connectNulls />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* Volume Chart */}
+          {activeChart === "volume" && (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} />
+                <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(0)}K` : value} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                  labelStyle={{ color: "#f1f5f9" }}
+                  formatter={(value, name) => {
+                    if (typeof value !== 'number') return ['-', name];
+                    const segment = segments.find((s) => s.id === name);
+                    return [`${formatNumber(value)} transactions`, segment?.name || name];
+                  }}
+                />
+                <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} />
+                {segments.map((segment) => (
+                  <Line key={segment.id} type="monotone" dataKey={segment.id} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 4 }} connectNulls />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* CAGR Comparison Bar Chart */}
+          {activeChart === "cagr" && (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={comparisonBarData} layout="vertical" margin={{ top: 20, right: 30, left: 100, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `${v.toFixed(1)}%`} />
+                <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 12 }} width={90} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                  formatter={(value) => {
+                    if (typeof value !== 'number') return ['-', 'CAGR'];
+                    return [`${value.toFixed(2)}%`, "CAGR"];
+                  }}
+                />
+                <Bar dataKey="cagr" name="CAGR %" radius={[0, 4, 4, 0]}>
+                  {comparisonBarData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.cagr >= 0 ? "#22c55e" : "#ef4444"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* Volatility/Stability Chart */}
+          {activeChart === "volatility" && (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={comparisonBarData} layout="vertical" margin={{ top: 20, right: 30, left: 100, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `${v.toFixed(1)}%`} domain={[0, 'auto']} />
+                <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 12 }} width={90} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                  formatter={(value, name) => {
+                    if (typeof value !== 'number') return ['-', String(name)];
+                    return [
+                      `${value.toFixed(2)}%`,
+                      name === "volatility" ? "Price Volatility (lower = more stable)" : String(name)
+                    ];
+                  }}
+                />
+                <Bar dataKey="volatility" name="Price Volatility" radius={[0, 4, 4, 0]}>
+                  {comparisonBarData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.volatility < 10 ? "#22c55e" : entry.volatility < 20 ? "#f59e0b" : "#ef4444"} 
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* Radar Chart */}
+          {activeChart === "radar" && (
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart data={radarData} margin={{ top: 20, right: 30, left: 30, bottom: 20 }}>
+                <PolarGrid stroke="#334155" />
+                <PolarAngleAxis dataKey="metric" tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                {segments.map((segment) => (
+                  <Radar
+                    key={segment.id}
+                    name={segment.name}
+                    dataKey={segment.id}
+                    stroke={segment.color}
+                    fill={segment.color}
+                    fillOpacity={0.2}
+                    strokeWidth={2}
+                  />
+                ))}
+                <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                  formatter={(value, name) => {
+                    if (typeof value !== 'number') return ['-', String(name)];
+                    const segment = segments.find((s) => s.id === name);
+                    return [`${value.toFixed(0)}%`, segment?.name || String(name)];
+                  }}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Comparison Stats */}
@@ -570,9 +924,6 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
             {comparisonStats.filter((stat) => stat !== null).map((stat) => {
               if (!stat) return null;
               const segment = segments.find((s) => s.id === stat.id);
-              const filteredCount = segment 
-                ? filterTransactionsForSegment(transactions, segment).length 
-                : 0;
               
               return (
                 <div
@@ -601,7 +952,7 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
                           exportToCSV(filtered, `${safeName}_transactions`, stat.name);
                         }}
                         className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors"
-                        title={`Export ${filteredCount} transactions`}
+                        title={`Export ${stat.totalTransactions} transactions`}
                       >
                         <Download className="w-4 h-4" />
                       </button>
@@ -610,17 +961,37 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
                   <div className="text-xl font-bold text-white mb-1">
                     AED {formatNumber(stat.latestPrice)}/sqm
                   </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <span className={stat.totalGrowth >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                      <TrendingUp className="w-3 h-3 inline mr-1" />
-                      {stat.totalGrowth >= 0 ? "+" : ""}{stat.totalGrowth.toFixed(1)}% total
-                    </span>
-                    <span className="text-slate-400">
-                      CAGR: {stat.cagr.toFixed(1)}%
-                    </span>
+                  
+                  {/* Key metrics grid */}
+                  <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                    <div className="bg-slate-800/50 rounded p-2">
+                      <span className="text-slate-400 block">YoY Growth</span>
+                      <span className={`font-semibold ${stat.latestYoY >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                        {stat.latestYoY >= 0 ? "+" : ""}{stat.latestYoY.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="bg-slate-800/50 rounded p-2">
+                      <span className="text-slate-400 block">CAGR</span>
+                      <span className={`font-semibold ${stat.cagr >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                        {stat.cagr >= 0 ? "+" : ""}{stat.cagr.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="bg-slate-800/50 rounded p-2">
+                      <span className="text-slate-400 block">Volatility</span>
+                      <span className={`font-semibold ${stat.volatility < 10 ? "text-emerald-400" : stat.volatility < 20 ? "text-amber-400" : "text-rose-400"}`}>
+                        {stat.volatility.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="bg-slate-800/50 rounded p-2">
+                      <span className="text-slate-400 block">Total Growth</span>
+                      <span className={`font-semibold ${stat.totalGrowth >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                        {stat.totalGrowth >= 0 ? "+" : ""}{stat.totalGrowth.toFixed(1)}%
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500 mt-2">
-                    {filteredCount.toLocaleString()} transactions
+                  
+                  <div className="text-xs text-slate-500 mt-3 pt-2 border-t border-slate-700">
+                    {stat.totalTransactions.toLocaleString()} transactions
                   </div>
                 </div>
               );
