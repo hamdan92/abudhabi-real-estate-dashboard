@@ -11,6 +11,7 @@ import {
   RegionBenchmarkChart,
   SaleTypeAnalysisChart,
   TrendComparisonTool,
+  ResaleAnalysis,
 } from "@/components/dashboard/charts";
 import { Card } from "@/components/ui/card";
 import {
@@ -23,10 +24,11 @@ import {
   Home,
   ArrowRightLeft,
   Layers,
+  Repeat,
 } from "lucide-react";
 import Link from "next/link";
 
-type TabType = "overview" | "ready-vs-offplan" | "trends";
+type TabType = "overview" | "ready-vs-offplan" | "trends" | "resale";
 
 export default function AnalyticsPage() {
   const { data, segmentedData, transactions, isLoading, error, refetch } = useDashboardData();
@@ -67,6 +69,7 @@ export default function AnalyticsPage() {
     { id: "overview" as TabType, label: "Overview", icon: BarChart3 },
     { id: "trends" as TabType, label: "Trend Comparison", icon: TrendingUp },
     { id: "ready-vs-offplan" as TabType, label: "Ready vs Off-Plan", icon: ArrowRightLeft },
+    { id: "resale" as TabType, label: "Resale Analysis", icon: Repeat },
   ];
 
   return (
@@ -272,6 +275,12 @@ export default function AnalyticsPage() {
             </p>
 
             <TrendComparisonTool transactions={transactions} />
+          </section>
+        )}
+
+        {activeTab === "resale" && (
+          <section>
+            <ResaleAnalysis transactions={transactions} />
           </section>
         )}
 

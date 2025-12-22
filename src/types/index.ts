@@ -281,3 +281,117 @@ export const ASSET_CATEGORIES = {
 
 // NOTE: All translation constants have been moved to @/lib/translations.ts
 // Import from there: import { translate, TRANSLATIONS } from '@/lib/translations';
+
+// ============================================================================
+// RESALE ANALYSIS TYPES
+// ============================================================================
+
+// Represents a unique unit identified by fingerprinting
+export interface UnitFingerprint {
+  fingerprint: string;
+  region: string;
+  project: string;
+  propertyType: string;
+  propertyDesign: string;
+  soldArea: number;
+  normalizedArea: number; // Rounded to reduce false negatives
+}
+
+// A single transaction in a unit's history
+export interface UnitTransaction {
+  transactionId: number;
+  date: Date;
+  price: number;
+  pricePerSqm: number;
+  saleType: string;
+  marketType: string;
+  year: number;
+  isResale: boolean;
+  // Resale-specific metrics (only populated if isResale = true)
+  previousPrice?: number;
+  previousDate?: Date;
+  holdingPeriodDays?: number;
+  holdingPeriodYears?: number;
+  priceChange?: number;
+  priceChangePercent?: number;
+  annualizedReturn?: number; // CAGR
+}
+
+// Complete history of a unit
+export interface UnitHistory {
+  fingerprint: UnitFingerprint;
+  transactions: UnitTransaction[];
+  totalSales: number;
+  hasResale: boolean;
+  resaleCount: number;
+}
+
+// Aggregated resale metrics for analysis
+export interface ResaleMetrics {
+  totalUnitsAnalyzed: number;
+  unitsWithResale: number;
+  resaleRate: number; // % of units that were resold
+  totalResaleTransactions: number;
+  
+  // Holding Period Stats
+  avgHoldingPeriodYears: number;
+  medianHoldingPeriodYears: number;
+  minHoldingPeriodYears: number;
+  maxHoldingPeriodYears: number;
+  
+  // Appreciation Stats
+  avgAppreciation: number; // Average price change %
+  medianAppreciation: number;
+  positiveResaleRate: number; // % of resales with positive appreciation
+  
+  // Annualized Return Stats
+  avgAnnualizedReturn: number;
+  medianAnnualizedReturn: number;
+  
+  // Flip Analysis (resale within 2 years)
+  flipCount: number;
+  flipRate: number;
+  avgFlipReturn: number;
+  
+  // Long-term holders (5+ years)
+  longTermCount: number;
+  longTermRate: number;
+  avgLongTermReturn: number;
+}
+
+// Resale metrics segmented by a dimension
+export interface ResaleSegmentData {
+  segment: string;
+  segmentEn: string;
+  unitsWithResale: number;
+  resaleCount: number;
+  resaleRate: number;
+  avgAppreciation: number;
+  avgHoldingPeriodYears: number;
+  avgAnnualizedReturn: number;
+  positiveResaleRate: number;
+}
+
+// Holding period vs return analysis
+export interface HoldingPeriodBucket {
+  range: string; // e.g., "0-1 years", "1-2 years"
+  minYears: number;
+  maxYears: number;
+  count: number;
+  avgAppreciation: number;
+  avgAnnualizedReturn: number;
+  positiveRate: number;
+}
+
+// Full resale analysis result
+export interface ResaleAnalysisResult {
+  metrics: ResaleMetrics;
+  byRegion: ResaleSegmentData[];
+  byPropertyType: ResaleSegmentData[];
+  bySaleType: ResaleSegmentData[]; // Original sale type (Off-plan vs Ready)
+  byPurchaseYear: ResaleSegmentData[];
+  holdingPeriodDistribution: HoldingPeriodBucket[];
+  appreciationDistribution: { range: string; count: number; percentage: number }[];
+  topPerformingUnits: UnitHistory[];
+  worstPerformingUnits: UnitHistory[];
+}
