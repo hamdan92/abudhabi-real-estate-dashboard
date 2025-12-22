@@ -23,10 +23,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Transaction } from "@/types";
 import { formatNumber } from "@/lib/utils";
 import { translate } from "@/lib/translations";
-import { Plus, X, TrendingUp, TrendingDown, Layers, Download, FileSpreadsheet, BarChart3, Activity, Target, Gauge } from "lucide-react";
-
-// Chart types available for comparison
-type ChartType = "price" | "yoyGrowth" | "cagr" | "volume" | "volatility" | "radar";
+import { Plus, X, TrendingUp, Layers, Download, FileSpreadsheet, BarChart3, Activity, Target, Gauge } from "lucide-react";
 
 // Color palette for comparison lines
 const LINE_COLORS = [
@@ -168,7 +165,7 @@ function exportToCSV(transactions: Transaction[], filename: string, segmentName:
 
 // Export chart summary data to CSV
 function exportChartSummary(
-  chartData: Record<string, string | number>[],
+  chartData: Record<string, string | number | null>[],
   segments: { id: string; name: string }[],
   filename: string
 ) {
@@ -218,8 +215,6 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     bedrooms: "all",
     saleType: "all",
   });
-  
-  const [activeChart, setActiveChart] = useState<ChartType>("price");
 
   // Get filter options
   const filterOptions = useMemo(() => {
@@ -372,38 +367,28 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
     return { metrics, years };
   }, [transactions, segments]);
 
-  // Generate chart data based on active chart type
+  // Generate chart data for all time-series charts
   const chartData = useMemo(() => {
     const { metrics, years } = segmentMetrics;
     
     return years.map((year) => {
-      const dataPoint: Record<string, number | string> = { year };
+      const dataPoint: Record<string, number | string | null> = { year };
       
       segments.forEach((segment) => {
         const m = metrics[segment.id];
         if (!m) return;
         
-        switch (activeChart) {
-          case "price":
-            dataPoint[segment.id] = m.yearly[year]?.price || 0;
-            break;
-          case "yoyGrowth":
-            dataPoint[segment.id] = m.yoyGrowth[year] ?? null;
-            break;
-          case "volume":
-            dataPoint[segment.id] = m.yearly[year]?.volume || 0;
-            break;
-          case "volatility":
-          case "cagr":
-          case "radar":
-            // These are single values, not time series
-            break;
-        }
+        // Price data
+        dataPoint[segment.id] = m.yearly[year]?.price || 0;
+        // YoY growth data (with _yoy suffix)
+        dataPoint[`${segment.id}_yoy`] = m.yoyGrowth[year] ?? null;
+        // Volume data (with _vol suffix)
+        dataPoint[`${segment.id}_vol`] = m.yearly[year]?.volume || 0;
       });
       
       return dataPoint;
     });
-  }, [segmentMetrics, segments, activeChart]);
+  }, [segmentMetrics, segments]);
 
   // Generate comparison bar data for CAGR and Volatility
   const comparisonBarData = useMemo(() => {
@@ -700,222 +685,202 @@ export function TrendComparisonTool({ transactions }: TrendComparisonToolProps) 
           </div>
         )}
 
-        {/* Chart Type Selector */}
-        <div className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-slate-700">
-          <button
-            onClick={() => setActiveChart("price")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
-              activeChart === "price" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            <TrendingUp className="w-4 h-4" />
-            Price/SQM Trend
-          </button>
-          <button
-            onClick={() => setActiveChart("yoyGrowth")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
-              activeChart === "yoyGrowth" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            <Activity className="w-4 h-4" />
-            YoY Growth
-          </button>
-          <button
-            onClick={() => setActiveChart("volume")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
-              activeChart === "volume" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            Transaction Volume
-          </button>
-          <button
-            onClick={() => setActiveChart("cagr")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
-              activeChart === "cagr" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            <Target className="w-4 h-4" />
-            CAGR Comparison
-          </button>
-          <button
-            onClick={() => setActiveChart("volatility")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
-              activeChart === "volatility" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            <Gauge className="w-4 h-4" />
-            Stability Analysis
-          </button>
-          <button
-            onClick={() => setActiveChart("radar")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
-              activeChart === "radar" ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            Multi-Factor Radar
-          </button>
-        </div>
-
-        {/* Charts */}
-        <div className="h-[400px] mb-6">
+        {/* All Charts Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Price Trend Chart */}
-          {activeChart === "price" && (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} />
-                <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
-                  labelStyle={{ color: "#f1f5f9" }}
-                  formatter={(value, name) => {
-                    if (typeof value !== 'number') return ['-', name];
-                    const segment = segments.find((s) => s.id === name);
-                    return [`AED ${formatNumber(value)}/sqm`, segment?.name || name];
-                  }}
-                />
-                <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} />
-                {segments.map((segment) => (
-                  <Line key={segment.id} type="monotone" dataKey={segment.id} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 4 }} connectNulls />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          )}
+          <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700">
+            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-amber-400" />
+              Price/SQM Trend
+            </h4>
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
+                  <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                    labelStyle={{ color: "#f1f5f9" }}
+                    formatter={(value, name) => {
+                      if (typeof value !== 'number') return ['-', name];
+                      const segment = segments.find((s) => s.id === name);
+                      return [`AED ${formatNumber(value)}/sqm`, segment?.name || name];
+                    }}
+                  />
+                  <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} wrapperStyle={{ fontSize: 11 }} />
+                  {segments.map((segment) => (
+                    <Line key={segment.id} type="monotone" dataKey={segment.id} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 3 }} connectNulls />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
           {/* YoY Growth Chart */}
-          {activeChart === "yoyGrowth" && (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} />
-                <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${value?.toFixed(0)}%`} domain={['auto', 'auto']} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
-                  labelStyle={{ color: "#f1f5f9" }}
-                  formatter={(value, name) => {
-                    if (value === null || value === undefined) return ['-', name];
-                    const segment = segments.find((s) => s.id === name);
-                    return [`${Number(value).toFixed(1)}%`, segment?.name || name];
-                  }}
-                />
-                <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} />
-                {/* Reference line at 0% */}
-                <Line type="monotone" dataKey={() => 0} stroke="#475569" strokeDasharray="5 5" dot={false} legendType="none" />
-                {segments.map((segment) => (
-                  <Line key={segment.id} type="monotone" dataKey={segment.id} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 4 }} connectNulls />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          )}
+          <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700">
+            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-emerald-400" />
+              Year-over-Year Growth
+            </h4>
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
+                  <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => `${value?.toFixed(0)}%`} domain={['auto', 'auto']} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                    labelStyle={{ color: "#f1f5f9" }}
+                    formatter={(value, name) => {
+                      if (value === null || value === undefined) return ['-', name];
+                      const segmentId = String(name).replace('_yoy', '');
+                      const segment = segments.find((s) => s.id === segmentId);
+                      return [`${Number(value).toFixed(1)}%`, segment?.name || name];
+                    }}
+                  />
+                  <Legend formatter={(value) => { const segmentId = String(value).replace('_yoy', ''); return segments.find((s) => s.id === segmentId)?.name || value; }} wrapperStyle={{ fontSize: 11 }} />
+                  <Line type="monotone" dataKey={() => 0} stroke="#475569" strokeDasharray="5 5" dot={false} legendType="none" />
+                  {segments.map((segment) => (
+                    <Line key={segment.id} type="monotone" dataKey={`${segment.id}_yoy`} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 3 }} connectNulls />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
           {/* Volume Chart */}
-          {activeChart === "volume" && (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} />
-                <YAxis tick={{ fill: "#94a3b8", fontSize: 12 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(0)}K` : value} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
-                  labelStyle={{ color: "#f1f5f9" }}
-                  formatter={(value, name) => {
-                    if (typeof value !== 'number') return ['-', name];
-                    const segment = segments.find((s) => s.id === name);
-                    return [`${formatNumber(value)} transactions`, segment?.name || name];
-                  }}
-                />
-                <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} />
-                {segments.map((segment) => (
-                  <Line key={segment.id} type="monotone" dataKey={segment.id} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 4 }} connectNulls />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-
-          {/* CAGR Comparison Bar Chart */}
-          {activeChart === "cagr" && (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={comparisonBarData} layout="vertical" margin={{ top: 20, right: 30, left: 100, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `${v.toFixed(1)}%`} />
-                <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 12 }} width={90} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
-                  formatter={(value) => {
-                    if (typeof value !== 'number') return ['-', 'CAGR'];
-                    return [`${value.toFixed(2)}%`, "CAGR"];
-                  }}
-                />
-                <Bar dataKey="cagr" name="CAGR %" radius={[0, 4, 4, 0]}>
-                  {comparisonBarData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.cagr >= 0 ? "#22c55e" : "#ef4444"} />
+          <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700">
+            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-blue-400" />
+              Transaction Volume
+            </h4>
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} />
+                  <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={{ stroke: "#475569" }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(0)}K` : value} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                    labelStyle={{ color: "#f1f5f9" }}
+                    formatter={(value, name) => {
+                      if (typeof value !== 'number') return ['-', name];
+                      const segmentId = String(name).replace('_vol', '');
+                      const segment = segments.find((s) => s.id === segmentId);
+                      return [`${formatNumber(value)} transactions`, segment?.name || name];
+                    }}
+                  />
+                  <Legend formatter={(value) => { const segmentId = String(value).replace('_vol', ''); return segments.find((s) => s.id === segmentId)?.name || value; }} wrapperStyle={{ fontSize: 11 }} />
+                  {segments.map((segment) => (
+                    <Line key={segment.id} type="monotone" dataKey={`${segment.id}_vol`} stroke={segment.color} strokeWidth={2} dot={{ fill: segment.color, r: 3 }} connectNulls />
                   ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-          {/* Volatility/Stability Chart */}
-          {activeChart === "volatility" && (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={comparisonBarData} layout="vertical" margin={{ top: 20, right: 30, left: 100, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `${v.toFixed(1)}%`} domain={[0, 'auto']} />
-                <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 12 }} width={90} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
-                  formatter={(value, name) => {
-                    if (typeof value !== 'number') return ['-', String(name)];
-                    return [
-                      `${value.toFixed(2)}%`,
-                      name === "volatility" ? "Price Volatility (lower = more stable)" : String(name)
-                    ];
-                  }}
-                />
-                <Bar dataKey="volatility" name="Price Volatility" radius={[0, 4, 4, 0]}>
-                  {comparisonBarData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.volatility < 10 ? "#22c55e" : entry.volatility < 20 ? "#f59e0b" : "#ef4444"} 
+          {/* Multi-Factor Radar */}
+          <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700">
+            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-purple-400" />
+              Multi-Factor Comparison
+            </h4>
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart data={radarData} margin={{ top: 10, right: 30, left: 30, bottom: 10 }}>
+                  <PolarGrid stroke="#334155" />
+                  <PolarAngleAxis dataKey="metric" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                  <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: 9 }} />
+                  {segments.map((segment) => (
+                    <Radar
+                      key={segment.id}
+                      name={segment.name}
+                      dataKey={segment.id}
+                      stroke={segment.color}
+                      fill={segment.color}
+                      fillOpacity={0.2}
+                      strokeWidth={2}
                     />
                   ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-
-          {/* Radar Chart */}
-          {activeChart === "radar" && (
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radarData} margin={{ top: 20, right: 30, left: 30, bottom: 20 }}>
-                <PolarGrid stroke="#334155" />
-                <PolarAngleAxis dataKey="metric" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: 10 }} />
-                {segments.map((segment) => (
-                  <Radar
-                    key={segment.id}
-                    name={segment.name}
-                    dataKey={segment.id}
-                    stroke={segment.color}
-                    fill={segment.color}
-                    fillOpacity={0.2}
-                    strokeWidth={2}
+                  <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} wrapperStyle={{ fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                    formatter={(value, name) => {
+                      if (typeof value !== 'number') return ['-', String(name)];
+                      const segment = segments.find((s) => s.id === name);
+                      return [`${value.toFixed(0)}%`, segment?.name || String(name)];
+                    }}
                   />
-                ))}
-                <Legend formatter={(value) => segments.find((s) => s.id === value)?.name || value} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
-                  formatter={(value, name) => {
-                    if (typeof value !== 'number') return ['-', String(name)];
-                    const segment = segments.find((s) => s.id === name);
-                    return [`${value.toFixed(0)}%`, segment?.name || String(name)];
-                  }}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          )}
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* CAGR Comparison Bar Chart */}
+          <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700">
+            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+              <Target className="w-4 h-4 text-teal-400" />
+              CAGR Comparison
+            </h4>
+            <div className="h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={comparisonBarData} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v.toFixed(1)}%`} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} width={75} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                    formatter={(value) => {
+                      if (typeof value !== 'number') return ['-', 'CAGR'];
+                      return [`${value.toFixed(2)}%`, "CAGR"];
+                    }}
+                  />
+                  <Bar dataKey="cagr" name="CAGR %" radius={[0, 4, 4, 0]}>
+                    {comparisonBarData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.cagr >= 0 ? "#22c55e" : "#ef4444"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Volatility/Stability Chart */}
+          <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700">
+            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+              <Gauge className="w-4 h-4 text-rose-400" />
+              Stability Analysis
+              <span className="text-xs text-slate-500 font-normal">(lower = more stable)</span>
+            </h4>
+            <div className="h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={comparisonBarData} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v.toFixed(1)}%`} domain={[0, 'auto']} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} width={75} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: "8px" }}
+                    formatter={(value, name) => {
+                      if (typeof value !== 'number') return ['-', String(name)];
+                      return [
+                        `${value.toFixed(2)}%`,
+                        name === "volatility" ? "Price Volatility" : String(name)
+                      ];
+                    }}
+                  />
+                  <Bar dataKey="volatility" name="Price Volatility" radius={[0, 4, 4, 0]}>
+                    {comparisonBarData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.volatility < 10 ? "#22c55e" : entry.volatility < 20 ? "#f59e0b" : "#ef4444"} 
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
 
         {/* Comparison Stats */}
