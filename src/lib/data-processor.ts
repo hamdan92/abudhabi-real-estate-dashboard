@@ -1,4 +1,12 @@
-import * as XLSX from "xlsx";
+// Dynamic import of xlsx for better browser compatibility
+let XLSX: typeof import("xlsx") | null = null;
+
+async function getXLSX() {
+  if (!XLSX) {
+    XLSX = await import("xlsx");
+  }
+  return XLSX;
+}
 import {
   Transaction,
   KPIData,
@@ -61,10 +69,11 @@ function parseExcelDate(value: unknown): Date {
 
 // Load and parse Excel file
 export async function loadExcelData(buffer: ArrayBuffer): Promise<Transaction[]> {
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  const xlsx = await getXLSX();
+  const workbook = xlsx.read(buffer, { type: "array", cellDates: true });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-  const rawData = XLSX.utils.sheet_to_json(sheet);
+  const rawData = xlsx.utils.sheet_to_json(sheet);
 
   return (rawData as Record<string, unknown>[])
     .map((row, index) => {
