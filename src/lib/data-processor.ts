@@ -59,6 +59,9 @@ function parseExcelDate(value: unknown): Date {
   return new Date();
 }
 
+// Maximum year to include (exclude incomplete future years)
+const MAX_YEAR = 2025;
+
 // Process pre-converted JSON data (Safari-compatible, no xlsx parsing at runtime)
 export function processJsonData(rawData: Record<string, unknown>[]): Transaction[] {
   return rawData
@@ -88,7 +91,8 @@ export function processJsonData(rawData: Record<string, unknown>[]): Transaction
 
       return transaction as Transaction;
     })
-    .filter((t) => t.registrationDate && !isNaN(t.registrationDate.getTime()));
+    .filter((t) => t.registrationDate && !isNaN(t.registrationDate.getTime()))
+    .filter((t) => t.year <= MAX_YEAR);  // Exclude any data beyond MAX_YEAR
 }
 
 // Load and parse Excel file (kept for backward compatibility, not used in production)
